@@ -28,6 +28,7 @@ import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.SecondaryButton
 import com.maxtime.app.ui.components.SectionLabel
+import com.maxtime.app.ui.components.ShimmerCard
 import com.maxtime.app.ui.components.TopBar
 import com.maxtime.app.ui.nav.Router
 import com.maxtime.app.ui.nav.Screen
@@ -42,8 +43,11 @@ fun ActivityDetailScreen(state: AppState, router: Router) {
     val scope = rememberCoroutineScope()
     val info = state.activityInfo()
     var sessions by remember { mutableStateOf<List<Session>>(emptyList()) }
+    var sessionsLoading by remember { mutableStateOf(true) }
     LaunchedEffect(state.intent.activity, state.location) {
+        sessionsLoading = true
         sessions = state.sessionsFor()
+        sessionsLoading = false
     }
 
     ScreenScaffold(
@@ -80,7 +84,9 @@ fun ActivityDetailScreen(state: AppState, router: Router) {
         Text(info.description, style = MaxTimeType.body, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp))
 
         SectionLabel("Upcoming sessions")
-        if (sessions.isEmpty()) {
+        if (sessionsLoading) {
+            ShimmerCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp))
+        } else if (sessions.isEmpty()) {
             Text(
                 "No sessions found within ${state.location.radiusLabel} of ${state.location.area}. Try expanding your radius or choosing another time.",
                 color = MaxTimeColors.muted, fontSize = 10.5.sp,

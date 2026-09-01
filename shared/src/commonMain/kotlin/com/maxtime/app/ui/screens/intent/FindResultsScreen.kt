@@ -31,6 +31,7 @@ import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.SecondaryButton
 import com.maxtime.app.ui.components.SectionLabel
+import com.maxtime.app.ui.components.ShimmerCard
 import com.maxtime.app.ui.components.StatusChip
 import com.maxtime.app.ui.components.TopBar
 import com.maxtime.app.ui.nav.Router
@@ -45,8 +46,11 @@ fun FindResultsScreen(state: AppState, router: Router) {
     val scope = rememberCoroutineScope()
     val info = state.activityInfo()
     var sessions by remember { mutableStateOf<List<Session>>(emptyList()) }
+    var sessionsLoading by remember { mutableStateOf(true) }
     LaunchedEffect(state.intent.activity, state.location) {
+        sessionsLoading = true
         sessions = state.sessionsFor()
+        sessionsLoading = false
     }
     val people = state.eligiblePeopleForIntent()
 
@@ -91,7 +95,9 @@ fun FindResultsScreen(state: AppState, router: Router) {
         )
 
         SectionLabel("Join a group", actionText = "No invite used")
-        if (sessions.isEmpty()) {
+        if (sessionsLoading) {
+            ShimmerCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp))
+        } else if (sessions.isEmpty()) {
             EmptyNote("Nothing nearby yet. Try expanding your radius or choose another time.")
         } else {
             sessions.take(2).forEachIndexed { index, session ->

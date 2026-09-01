@@ -36,6 +36,7 @@ import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.SectionLabel
 import com.maxtime.app.ui.components.SelectableChip
+import com.maxtime.app.ui.components.ShimmerCard
 import com.maxtime.app.ui.components.StatusChip
 import com.maxtime.app.ui.nav.Router
 import com.maxtime.app.ui.nav.Screen
@@ -146,14 +147,19 @@ fun HomeScreen(state: AppState, router: Router) {
 
             var recommended by remember { mutableStateOf<Pair<String, Session>?>(null) }
             var nearby by remember { mutableStateOf<Pair<String, Session>?>(null) }
+            var sessionsLoading by remember { mutableStateOf(true) }
             LaunchedEffect(state.intent.activity, state.location) {
+                sessionsLoading = true
                 recommended = state.recommendedGroup()
                 nearby = state.nearbySession(recommended?.first)
+                sessionsLoading = false
             }
 
             SectionLabel("People & groups doing this", actionText = "See all", onAction = { router.navigate(Screen.FindWhat) })
             val recommendedValue = recommended
-            if (recommendedValue != null) {
+            if (sessionsLoading) {
+                ShimmerCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp))
+            } else if (recommendedValue != null) {
                 val (activity, session) = recommendedValue
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
@@ -193,7 +199,9 @@ fun HomeScreen(state: AppState, router: Router) {
                 modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp)
             )
             val nearbyValue = nearby
-            if (nearbyValue != null) {
+            if (sessionsLoading) {
+                ShimmerCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp), height = 64.dp)
+            } else if (nearbyValue != null) {
                 val (activity, session) = nearbyValue
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),

@@ -1,5 +1,11 @@
 package com.maxtime.app.ui.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,8 +23,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -212,6 +220,28 @@ fun MaxTimeCard(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(15.dp),
         content = content
+    )
+}
+
+/** Pulsing placeholder matching [MaxTimeCard]'s footprint, shown while a card's data is loading
+ *  so the layout doesn't jump from an empty-state line to a full card once it arrives. */
+@Composable
+fun ShimmerCard(modifier: Modifier = Modifier, height: Dp = 84.dp, shape: Shape = MaxTimeShapes.medium) {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(tween(700, easing = LinearEasing), RepeatMode.Reverse),
+        label = "shimmer-alpha"
+    )
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(shape)
+            .background(MaxTimeColors.cardBg)
+            .border(1.dp, MaxTimeColors.cardBorder, shape)
+            .alpha(alpha)
     )
 }
 

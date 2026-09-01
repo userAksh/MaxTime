@@ -20,22 +20,33 @@ private data class SessionDoc(
     val cancellationPolicy: String = "Free cancellation up to 2 hours before start.",
 )
 
+/**
+ * Caches raw (unfiltered) query results in memory, keyed by activity/activities — session
+ * inventory is fixed reference data for the lifetime of the app process (not user-generated,
+ * not written from the app), so re-fetching on every screen visit only adds latency and causes
+ * a visible reload/reflow with no benefit. Radius filtering is applied on each call from the
+ * cached docs, so changing radius never needs a new network round trip either.
+ */
 class SessionRepository {
     private val sessions get() = Firebase.firestore.collection("sessions")
+    private val byActivityCache = mutableMapOf<String, List<Pair<String, SessionDoc>>>()
+    private val byActivitiesCache = mutableMapOf<List<String>, List<Pair<String, SessionDoc>>>()
 
     suspend fun sessionsFor(activity: String, radiusKm: Int): List<Session> {
-        val snapshot = sessions.where { "activity" equalTo activity }.get()
-        return snapshot.documents
-            .map { it.id to it.data<SessionDoc>() }
+        val docs = byActivityCache.getOrPut(activity) {
+            sessions.where { "activity" equalTo activity }.get().documents.map { it.id to it.data<SessionDoc>() }
+        }
+        return docs
             .filter { (_, doc) -> doc.distanceKm <= radiusKm }
             .map { (id, doc) -> doc.toSession(id) }
     }
 
     suspend fun sessionsForActivities(activities: List<String>, radiusKm: Int): List<Session> {
         if (activities.isEmpty()) return emptyList()
-        val snapshot = sessions.where { "activity" inArray activities }.get()
-        return snapshot.documents
-            .map { it.id to it.data<SessionDoc>() }
+        val docs = byActivitiesCache.getOrPut(activities) {
+            sessions.where { "activity" inArray activities }.get().documents.map { it.id to it.data<SessionDoc>() }
+        }
+        return docs
             .filter { (_, doc) -> doc.distanceKm <= radiusKm }
             .map { (id, doc) -> doc.toSession(id) }
     }
