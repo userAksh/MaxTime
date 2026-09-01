@@ -46,14 +46,14 @@ import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
 import kotlinx.coroutines.launch
 import maxtime.shared.generated.resources.Res
-import maxtime.shared.generated.resources.nav_activity_active
-import maxtime.shared.generated.resources.nav_activity_solid
 import maxtime.shared.generated.resources.nav_discover_active
 import maxtime.shared.generated.resources.nav_discover_solid
 import maxtime.shared.generated.resources.nav_groups_active
 import maxtime.shared.generated.resources.nav_groups_solid
 import maxtime.shared.generated.resources.nav_home_active
 import maxtime.shared.generated.resources.nav_home_solid
+import maxtime.shared.generated.resources.nav_plans_active
+import maxtime.shared.generated.resources.nav_plans_solid
 import maxtime.shared.generated.resources.nav_profile_active
 import maxtime.shared.generated.resources.nav_profile_solid
 import org.jetbrains.compose.resources.DrawableResource
@@ -266,7 +266,7 @@ private val homeNavTabs = listOf(
     NavTab("Home", Res.drawable.nav_home_solid, Res.drawable.nav_home_active) { },
     NavTab("Discover", Res.drawable.nav_discover_solid, Res.drawable.nav_discover_active) { router -> router.navigate(Screen.FindWhat) },
     NavTab("Groups", Res.drawable.nav_groups_solid, Res.drawable.nav_groups_active) { router -> router.navigate(Screen.GroupDetail) },
-    NavTab("Activity", Res.drawable.nav_activity_solid, Res.drawable.nav_activity_active) { },
+    NavTab("Plans", Res.drawable.nav_plans_solid, Res.drawable.nav_plans_active) { },
     NavTab("Profile", Res.drawable.nav_profile_solid, Res.drawable.nav_profile_active) { }
 )
 
