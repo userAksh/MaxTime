@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.firebase.AuthRepository
+import com.maxtime.app.data.firebase.UserProfileRepository
+import com.maxtime.app.data.firebase.buildPhoneVerificationProvider
+import com.maxtime.app.data.firebase.rememberPhoneAuthContext
 import com.maxtime.app.ui.components.InterestChip
 import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ProgressBar
@@ -45,6 +50,10 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import dev.gitlive.firebase.Firebase
+import dev.gitlive.firebase.auth.auth
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 
 @Composable
 fun OnboardingProgressHeader(step: Int, total: Int = 4, onBack: (() -> Unit)? = null) {
@@ -110,6 +119,55 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
     var view by remember { mutableStateOf(AuthView.ENTRY) }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var otp by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+    var codeDeferred by remember { mutableStateOf<CompletableDeferred<String>?>(null) }
+
+    val scope = rememberCoroutineScope()
+    val phoneAuthContext = rememberPhoneAuthContext()
+    val authRepository = remember { AuthRepository() }
+
+    fun sendOtp() {
+        errorText = null
+        isLoading = true
+        scope.launch {
+            try {
+                val provider = buildPhoneVerificationProvider(phoneAuthContext) {
+                    val deferred = CompletableDeferred<String>()
+                    codeDeferred = deferred
+                    view = AuthView.OTP
+                    isLoading = false
+                    deferred.await()
+                }
+                authRepository.verifyPhoneNumber("+91$phone", provider)
+                onVerified()
+            } catch (e: Exception) {
+                isLoading = false
+                errorText = e.message ?: "Something went wrong. Try again."
+            }
+        }
+    }
+
+    fun submitOtp() {
+        errorText = null
+        isLoading = true
+        codeDeferred?.complete(otp)
+    }
+
+    fun continueAsGuest() {
+        errorText = null
+        isLoading = true
+        scope.launch {
+            try {
+                authRepository.signInAnonymously()
+                onGoogleSkip()
+            } catch (e: Exception) {
+                isLoading = false
+                errorText = e.message ?: "Something went wrong. Try again."
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         OnboardingProgressHeader(
@@ -136,13 +194,16 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                         MaxTimeTextField(phone, { phone = it }, "98765 43210", KeyboardType.Phone)
                     }
                 }
+                errorText?.let {
+                    Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
+                }
                 Spacer(Modifier.weight(1f))
                 Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-                    PrimaryButton("Send OTP", onClick = { view = AuthView.OTP })
+                    PrimaryButton(if (isLoading) "Sending…" else "Send OTP", onClick = ::sendOtp, enabled = !isLoading && phone.isNotBlank())
                     OrDivider()
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         SecondaryButton("Email", Modifier.weight(1f), onClick = { view = AuthView.EMAIL })
-                        SecondaryButton("Google", Modifier.weight(1f), onClick = onGoogleSkip)
+                        SecondaryButton("Continue as guest", Modifier.weight(1f), onClick = ::continueAsGuest)
                     }
                 }
             }
@@ -162,22 +223,21 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                 }
             }
             AuthView.OTP -> {
-                val dest = if (email.isNotBlank()) email else if (phone.isNotBlank()) "+91 $phone" else "+91 98XXX XXX12"
-                Text("Code sent to $dest", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
-                Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("4", "7", "2", "9").forEach { digit ->
-                        Box(
-                            Modifier.size(width = 40.dp, height = 48.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(MaxTimeColors.cardBg)
-                                .border(1.dp, MaxTimeColors.accent, RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) { Text(digit, color = MaxTimeColors.accent2, fontWeight = FontWeight.Bold) }
-                    }
+                Text("Code sent to +91 $phone", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
+                Box(
+                    Modifier.padding(horizontal = 24.dp, vertical = 10.dp).fillMaxWidth()
+                        .clip(MaxTimeShapes.medium).background(MaxTimeColors.cardBg)
+                        .border(1.dp, MaxTimeColors.accent, MaxTimeShapes.medium)
+                        .padding(horizontal = 14.dp, vertical = 13.dp)
+                ) {
+                    MaxTimeTextField(otp, { if (it.length <= 6) otp = it }, "6-digit code", KeyboardType.NumberPassword)
+                }
+                errorText?.let {
+                    Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
                 }
                 Spacer(Modifier.weight(1f))
                 Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-                    PrimaryButton("Verify", onClick = onVerified)
+                    PrimaryButton(if (isLoading) "Verifying…" else "Verify", onClick = ::submitOtp, enabled = !isLoading && otp.length == 6)
                 }
             }
         }
@@ -186,6 +246,31 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
 
 @Composable
 fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
+    var isSaving by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val profileRepository = remember { UserProfileRepository() }
+
+    fun continueTapped() {
+        val uid = Firebase.auth.currentUser?.uid
+        if (uid == null) {
+            onContinue()
+            return
+        }
+        errorText = null
+        isSaving = true
+        scope.launch {
+            try {
+                profileRepository.saveProfile(uid, state.currentUser.name, Firebase.auth.currentUser?.phoneNumber)
+                profileRepository.loadProfile(uid)
+                onContinue()
+            } catch (e: Exception) {
+                isSaving = false
+                errorText = e.message ?: "Couldn't save your profile. Try again."
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         OnboardingProgressHeader(step = 3)
         Text("Add your name and photo", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
@@ -200,9 +285,12 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
         FieldValueBox(state.currentUser.name)
         FieldLabel("Date of birth")
         FieldValueBox("14 / 03 / 1998")
+        errorText?.let {
+            Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
+        }
         Spacer(Modifier.weight(1f))
         Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-            PrimaryButton("Continue", onClick = onContinue)
+            PrimaryButton(if (isSaving) "Saving…" else "Continue", onClick = ::continueTapped, enabled = !isSaving)
         }
     }
 }

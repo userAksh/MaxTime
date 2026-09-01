@@ -30,15 +30,14 @@ targets:
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_PREVIEWS: YES
-        FRAMEWORK_SEARCH_PATHS:
-          - "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
-        LD_RUNPATH_SEARCH_PATHS:
-          - "$(inherited) @executable_path/Frameworks"
     info:
       path: iosApp/Info.plist
       properties:
         UILaunchScreen: {}
         CADisableMinimumFrameDurationOnPhone: true
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - app-1-130636243911-ios-d067622960adf8cc782fe2
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UISupportedInterfaceOrientations~ipad:
@@ -46,9 +45,3 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-    preBuildScripts:
-      - name: Compile Kotlin Framework
-        script: |
-          cd "$SRCROOT/.."
-          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
-        basedOnDependencyAnalysis: false
