@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Replaces the ancient android:style/Theme.Black.NoTitleBar, whose opaque black
+         windowBackground was showing through behind the status bar on every screen —
+         enableEdgeToEdge() makes the system bars transparent, but that only reveals our
+         Compose content if the window's own backdrop isn't solid black to begin with. -->
+    <style name="Theme.MaxTime" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
