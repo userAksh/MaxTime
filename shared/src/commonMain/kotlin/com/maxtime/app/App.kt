@@ -27,8 +27,13 @@ fun MaxTimeApp() {
     val router = remember { Router(Screen.Splash) }
 
     MaxTimeTheme {
-        Box(Modifier.fillMaxSize().background(com.maxtime.app.ui.theme.MaxTimeColors.bg1).statusBarsPadding().navigationBarsPadding()) {
-            if (router.current in onboardingOrder) {
+        if (router.current in onboardingOrder) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(com.maxtime.app.ui.theme.MaxTimeColors.bg1)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
                 OnboardingDeck(router) { screen ->
                     when (screen) {
                         Screen.Splash -> SplashScreen(onGetStarted = { router.navigate(Screen.AgeGate) })
@@ -42,7 +47,12 @@ fun MaxTimeApp() {
                         else -> Unit
                     }
                 }
-            } else {
+            }
+        } else {
+            // No statusBarsPadding here — each screen draws its own background full-bleed behind
+            // the status bar (see ScreenScaffold/HomeScreen) so the status bar area always matches
+            // that screen's own background instead of a fixed shell color.
+            Box(Modifier.fillMaxSize().navigationBarsPadding()) {
                 RootScreenHost(state, router)
             }
         }
