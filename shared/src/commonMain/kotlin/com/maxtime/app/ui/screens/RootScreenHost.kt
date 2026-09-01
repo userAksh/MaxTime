@@ -22,8 +22,7 @@ import com.maxtime.app.ui.screens.intent.HomeScreen
 
 /**
  * Dispatches to whichever screen `router.current` points to — mirrors the prototype's
- * `screens[current]()` lookup. Simple fade + slight upward slide on entry for everything here
- * (no deck/peek effect outside onboarding, per Section 5).
+ * `screens[current]()` lookup. No transition animation between screens.
  */
 @Composable
 fun RootScreenHost(state: AppState, router: Router) {
