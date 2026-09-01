@@ -7,11 +7,15 @@ import androidx.compose.runtime.setValue
 
 enum class Screen {
     Splash, AgeGate, Auth, Profile, Interests,
-    Home, FindWhat, FindWhen, FindWhenCustom, FindWhere, FindResults,
+    Home, Discover, Groups, Plans, MyProfile,
+    FindWhat, FindWhen, FindWhenCustom, FindWhere, FindResults,
     ActivityDetail, SessionDetail, PersonDetail, MatchRequest,
     CreateGroup, GroupDetail, GroupChat,
     BookingReview, BookingSuccess
 }
+
+/** The 5 screens with a persistent bottom nav bar — every screen reachable directly from a tab. */
+val bottomNavScreens = listOf(Screen.Home, Screen.Discover, Screen.Groups, Screen.Plans, Screen.MyProfile)
 
 val onboardingOrder = listOf(Screen.Splash, Screen.AgeGate, Screen.Auth, Screen.Profile, Screen.Interests)
 

@@ -1,0 +1,66 @@
+package com.maxtime.app.ui.screens.tabs
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.maxtime.app.data.AppState
+import com.maxtime.app.data.BookingStatus
+import com.maxtime.app.ui.components.BottomNav
+import com.maxtime.app.ui.components.MaxTimeCard
+import com.maxtime.app.ui.components.ScreenScaffold
+import com.maxtime.app.ui.components.StatusChip
+import com.maxtime.app.ui.nav.Router
+import com.maxtime.app.ui.nav.Screen
+import com.maxtime.app.ui.theme.MaxTimeColors
+import com.maxtime.app.ui.theme.MaxTimeSpacing
+import com.maxtime.app.ui.theme.MaxTimeType
+
+/** Your schedule — the same groups as the Groups tab, viewed date/booking-first instead of
+ *  people-first. Your personal record: upcoming, pending, and past. */
+@Composable
+fun PlansScreen(state: AppState, router: Router) {
+    ScreenScaffold(bottomBar = { BottomNav(router, active = Screen.Plans) }) {
+        Text("Plans", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
+        Text(
+            "Your upcoming and pending activities.",
+            style = MaxTimeType.body,
+            modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
+        )
+
+        val plans = state.groups.values.toList()
+        if (plans.isEmpty()) {
+            Text(
+                "No plans yet — find something to do and lock in a spot.",
+                color = MaxTimeColors.muted, fontSize = 11.5.sp,
+                modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp)
+            )
+        } else {
+            plans.forEach { group ->
+                MaxTimeCard(
+                    Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
+                    onClick = {
+                        state.selectedGroup = group
+                        router.navigate(Screen.GroupDetail)
+                    }
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${group.icon} ${group.activity}", color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        StatusChip(group.statusLabel, group.statusVariant)
+                    }
+                    Text(group.whenLabel, style = MaxTimeType.caption, modifier = Modifier.padding(top = 4.dp))
+                    Text(group.venueLine, style = MaxTimeType.caption, modifier = Modifier.padding(top = 2.dp))
+                    if (group.bookingStatus == BookingStatus.CONFIRMED) {
+                        Text("✓ Booked", color = MaxTimeColors.accent2, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+        }
+    }
+}

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -18,7 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,14 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.Session
 import com.maxtime.app.ui.components.AvatarStack
+import com.maxtime.app.ui.components.BottomNav
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.SectionLabel
 import com.maxtime.app.ui.components.SelectableChip
@@ -51,19 +48,6 @@ import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
 import kotlinx.coroutines.launch
-import maxtime.shared.generated.resources.Res
-import maxtime.shared.generated.resources.nav_discover_active
-import maxtime.shared.generated.resources.nav_discover_solid
-import maxtime.shared.generated.resources.nav_groups_active
-import maxtime.shared.generated.resources.nav_groups_solid
-import maxtime.shared.generated.resources.nav_home_active
-import maxtime.shared.generated.resources.nav_home_solid
-import maxtime.shared.generated.resources.nav_plans_active
-import maxtime.shared.generated.resources.nav_plans_solid
-import maxtime.shared.generated.resources.nav_profile_active
-import maxtime.shared.generated.resources.nav_profile_solid
-import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.painterResource
 
 @Composable
 fun HomeScreen(state: AppState, router: Router) {
@@ -249,7 +233,7 @@ fun HomeScreen(state: AppState, router: Router) {
             }
           }
 
-            HomeBottomNav(router)
+            BottomNav(router, active = Screen.Home)
         }
 
         if (!state.locationConfirmed) {
@@ -270,59 +254,3 @@ private fun HomeTopBar() {
     }
 }
 
-private data class NavTab(
-    val label: String,
-    val iconSolid: DrawableResource,
-    val iconActive: DrawableResource,
-    val onClick: (Router) -> Unit
-)
-
-private val homeNavTabs = listOf(
-    NavTab("Home", Res.drawable.nav_home_solid, Res.drawable.nav_home_active) { },
-    NavTab("Discover", Res.drawable.nav_discover_solid, Res.drawable.nav_discover_active) { router -> router.navigate(Screen.FindWhat) },
-    NavTab("Groups", Res.drawable.nav_groups_solid, Res.drawable.nav_groups_active) { router -> router.navigate(Screen.GroupDetail) },
-    NavTab("Plans", Res.drawable.nav_plans_solid, Res.drawable.nav_plans_active) { },
-    NavTab("Profile", Res.drawable.nav_profile_solid, Res.drawable.nav_profile_active) { }
-)
-
-@Composable
-private fun HomeBottomNav(router: Router) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .shadow(elevation = 10.dp)
-            .background(MaxTimeColors.bg1)
-            .navigationBarsPadding()
-            .padding(vertical = 12.dp, horizontal = 12.dp),
-        horizontalArrangement = Arrangement.SpaceAround
-    ) {
-        homeNavTabs.forEach { tab ->
-            val isOn = tab.label == "Home"
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-                modifier = Modifier
-                    .clip(MaxTimeShapes.small)
-                    .clickable { tab.onClick(router) }
-                    .padding(vertical = 6.dp, horizontal = 10.dp)
-            ) {
-                if (isOn) {
-                    Icon(
-                        painter = painterResource(tab.iconActive),
-                        contentDescription = tab.label,
-                        tint = Color.Unspecified,
-                        modifier = Modifier.size(22.dp)
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(tab.iconSolid),
-                        contentDescription = tab.label,
-                        tint = MaxTimeColors.muted,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Text(tab.label, color = if (isOn) MaxTimeColors.accent else MaxTimeColors.muted, fontSize = 11.sp, fontWeight = if (isOn) FontWeight.Bold else FontWeight.Normal)
-            }
-        }
-    }
-}

@@ -19,6 +19,10 @@ import com.maxtime.app.ui.screens.intent.FindWhenCustomScreen
 import com.maxtime.app.ui.screens.intent.FindWhenScreen
 import com.maxtime.app.ui.screens.intent.FindWhereScreen
 import com.maxtime.app.ui.screens.intent.HomeScreen
+import com.maxtime.app.ui.screens.tabs.DiscoverScreen
+import com.maxtime.app.ui.screens.tabs.GroupsScreen
+import com.maxtime.app.ui.screens.tabs.MyProfileScreen
+import com.maxtime.app.ui.screens.tabs.PlansScreen
 
 /**
  * Dispatches to whichever screen `router.current` points to — mirrors the prototype's
@@ -29,6 +33,10 @@ fun RootScreenHost(state: AppState, router: Router) {
     ScreenTransition(key = router.current) {
         when (router.current) {
             Screen.Home -> HomeScreen(state, router)
+            Screen.Discover -> DiscoverScreen(state, router)
+            Screen.Groups -> GroupsScreen(state, router)
+            Screen.Plans -> PlansScreen(state, router)
+            Screen.MyProfile -> MyProfileScreen(state, router)
             Screen.FindWhat -> FindWhatScreen(state, router)
             Screen.FindWhen -> FindWhenScreen(state, router)
             Screen.FindWhenCustom -> FindWhenCustomScreen(state, router)
