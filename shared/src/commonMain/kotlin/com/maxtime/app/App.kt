@@ -49,10 +49,11 @@ fun MaxTimeApp() {
                 }
             }
         } else {
-            // No statusBarsPadding here — each screen draws its own background full-bleed behind
-            // the status bar (see ScreenScaffold/HomeScreen) so the status bar area always matches
-            // that screen's own background instead of a fixed shell color.
-            Box(Modifier.fillMaxSize().navigationBarsPadding()) {
+            // No statusBarsPadding/navigationBarsPadding here — each screen draws its own
+            // background full-bleed behind the status and navigation bars (see ScreenScaffold,
+            // HomeScreen, BottomCta) so those areas always match that screen's own background
+            // instead of leaving a shell-colored gap, with content itself inset from the bars.
+            Box(Modifier.fillMaxSize()) {
                 RootScreenHost(state, router)
             }
         }

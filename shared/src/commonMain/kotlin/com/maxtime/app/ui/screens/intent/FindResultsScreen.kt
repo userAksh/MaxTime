@@ -57,12 +57,9 @@ fun FindResultsScreen(state: AppState, router: Router) {
     ScreenScaffold(
         topBar = { TopBar(onBack = { router.goBack() }) },
         bottomBar = {
-            androidx.compose.foundation.layout.Column {
+            BottomCta {
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(MaxTimeColors.bg1)
-                        .padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 14.dp),
+                    Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     SecondaryButton("Create an activity", Modifier.weight(1f), onClick = { router.navigate(Screen.CreateGroup) })
