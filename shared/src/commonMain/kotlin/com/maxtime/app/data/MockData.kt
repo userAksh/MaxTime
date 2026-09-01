@@ -75,41 +75,5 @@ fun eligiblePeople(activity: String): List<Person> = PEOPLE_DB.filter { activity
 
 fun getPerson(name: String): Person = PEOPLE_DB.firstOrNull { it.name == name } ?: PEOPLE_DB.first()
 
-private data class TimeSlot(val date: String, val startTime: String, val spotsLeft: Int)
-
-private val SESSION_TIME_SLOTS = listOf(
-    TimeSlot("Sat", "9:00 AM", 5),
-    TimeSlot("Sun", "6:00 PM", 2),
-    TimeSlot("Today", "7:00 PM", 4)
-)
-
-fun venuesWithinRadius(activity: String, radiusKm: Int, areaFallback: String): List<Venue> {
-    val info = getActivityInfo(activity, areaFallback)
-    return info.venues.filter { it.distanceKm <= radiusKm }
-}
-
-/**
- * Sessions are independent inventory — each gets its OWN date/time from the slot rotation,
- * never the user's requested "when". That value is shown separately, as "what you asked for".
- */
-fun getSessionsForActivity(activity: String, radiusKm: Int, areaFallback: String): List<Session> {
-    val info = getActivityInfo(activity, areaFallback)
-    val inRadius = venuesWithinRadius(activity, radiusKm, areaFallback)
-    return inRadius.mapIndexed { i, v ->
-        val slot = SESSION_TIME_SLOTS[i % SESSION_TIME_SLOTS.size]
-        Session(
-            id = "sess-$activity-${v.name}",
-            venueName = v.name,
-            distanceKm = v.distanceKm,
-            activity = activity,
-            date = slot.date,
-            startTime = slot.startTime,
-            price = info.price,
-            capacity = 8,
-            spotsLeft = slot.spotsLeft
-        )
-    }
-}
-
 /** Home's discovery cards — derived from the same session inventory as everywhere else. */
 val HOME_CANDIDATE_ACTIVITIES = listOf("Badminton", "Swimming", "Pottery", "Pilates", "Football", "Cooking", "Board Games")

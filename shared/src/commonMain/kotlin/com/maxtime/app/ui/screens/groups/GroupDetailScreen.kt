@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +34,7 @@ import com.maxtime.app.ui.nav.Screen
 import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import kotlinx.coroutines.launch
 
 @Composable
 fun GroupDetailScreen(state: AppState, router: Router) {
@@ -172,6 +174,7 @@ private fun ChatUnlockButton(router: Router) {
 
 @Composable
 private fun GroupFooter(state: AppState, group: Group, router: Router) {
+    val scope = rememberCoroutineScope()
     BottomCta {
         when {
             group.status == GroupStatus.DEADLINE_MISSED -> {
@@ -186,8 +189,10 @@ private fun GroupFooter(state: AppState, group: Group, router: Router) {
                     "Or just book solo instead", color = MaxTimeColors.muted, fontSize = 11.5.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable {
-                        state.selectSession()
-                        router.navigate(Screen.SessionDetail)
+                        scope.launch {
+                            state.selectSession()
+                            router.navigate(Screen.SessionDetail)
+                        }
                     }
                 )
             }
@@ -202,7 +207,7 @@ private fun GroupFooter(state: AppState, group: Group, router: Router) {
             }
             group.venue == null -> {
                 PrimaryButton("Check for a matching session", onClick = {
-                    state.resolveSessionForGroup(group)
+                    scope.launch { state.resolveSessionForGroup(group) }
                 })
                 Text(
                     "Leave", color = MaxTimeColors.muted, fontSize = 11.5.sp,

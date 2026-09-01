@@ -16,9 +16,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.Session
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.SectionLabel
@@ -39,9 +42,11 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(state: AppState, router: Router) {
+    val scope = rememberCoroutineScope()
     Box(Modifier) {
         Column(Modifier.background(MaxTimeColors.screenGradient)) {
             HomeTopBar()
@@ -93,8 +98,10 @@ fun HomeScreen(state: AppState, router: Router) {
                     "Book solo",
                     color = MaxTimeColors.accent2, fontSize = 11.5.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable {
-                        state.selectSession()
-                        router.navigate(Screen.SessionDetail)
+                        scope.launch {
+                            state.selectSession()
+                            router.navigate(Screen.SessionDetail)
+                        }
                     }
                 )
                 Text(" · ", style = MaxTimeType.caption)
@@ -122,10 +129,17 @@ fun HomeScreen(state: AppState, router: Router) {
                 }
             }
 
+            var recommended by remember { mutableStateOf<Pair<String, Session>?>(null) }
+            var nearby by remember { mutableStateOf<Pair<String, Session>?>(null) }
+            LaunchedEffect(state.intent.activity, state.location) {
+                recommended = state.recommendedGroup()
+                nearby = state.nearbySession(recommended?.first)
+            }
+
             SectionLabel("People & groups doing this", actionText = "See all", onAction = { router.navigate(Screen.FindWhat) })
-            val recommended = state.recommendedGroup()
-            if (recommended != null) {
-                val (activity, session) = recommended
+            val recommendedValue = recommended
+            if (recommendedValue != null) {
+                val (activity, session) = recommendedValue
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     onClick = {
@@ -163,9 +177,9 @@ fun HomeScreen(state: AppState, router: Router) {
                 color = MaxTimeColors.muted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp)
             )
-            val nearby = state.nearbySession(recommended?.first)
-            if (nearby != null) {
-                val (activity, session) = nearby
+            val nearbyValue = nearby
+            if (nearbyValue != null) {
+                val (activity, session) = nearbyValue
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     onClick = {

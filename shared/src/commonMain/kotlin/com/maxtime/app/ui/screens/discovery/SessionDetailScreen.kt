@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,7 +34,9 @@ import com.maxtime.app.ui.theme.MaxTimeType
 
 @Composable
 fun SessionDetailScreen(state: AppState, router: Router) {
-    if (state.selectedSession == null) state.selectSession()
+    LaunchedEffect(Unit) {
+        if (state.selectedSession == null) state.selectSession()
+    }
     val session = state.selectedSession ?: return
     val info = state.activityInfo(session.activity)
 

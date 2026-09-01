@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.maxtime.app.data.firebase.SessionRepository
 import kotlin.math.roundToInt
 
 /**
@@ -12,6 +13,8 @@ import kotlin.math.roundToInt
  * reducer-style set of mutator functions rather than scattering mutation logic across screens.
  */
 class AppState {
+    private val sessionRepository = SessionRepository()
+
     var currentUser by mutableStateOf(User(name = "Priya Sharma"))
     var location by mutableStateOf(UserLocation(area = "Saket, South Delhi", radiusKm = 5))
     var intent by mutableStateOf(ActivityIntent(activity = "Badminton", whenLabel = "Sat, 9 AM", peopleNeeded = 2))
@@ -30,24 +33,26 @@ class AppState {
 
     fun activityInfo(activity: String = intent.activity): ActivityInfo = getActivityInfo(activity, location.area)
 
-    fun sessionsFor(activity: String = intent.activity): List<Session> =
-        getSessionsForActivity(activity, location.radiusKm, location.area)
+    suspend fun sessionsFor(activity: String = intent.activity): List<Session> =
+        sessionRepository.sessionsFor(activity, location.radiusKm)
 
     fun eligiblePeopleForIntent(): List<Person> = eligiblePeople(intent.activity)
 
-    fun recommendedGroup(): Pair<String, Session>? {
+    suspend fun recommendedGroup(): Pair<String, Session>? {
+        val sessions = sessionRepository.sessionsForActivities(HOME_CANDIDATE_ACTIVITIES, location.radiusKm)
         for (activity in HOME_CANDIDATE_ACTIVITIES) {
-            val sessions = sessionsFor(activity)
-            if (sessions.isNotEmpty()) return activity to sessions.first()
+            val session = sessions.firstOrNull { it.activity == activity }
+            if (session != null) return activity to session
         }
         return null
     }
 
-    fun nearbySession(excludeActivity: String?): Pair<String, Session>? {
+    suspend fun nearbySession(excludeActivity: String?): Pair<String, Session>? {
+        val sessions = sessionRepository.sessionsForActivities(HOME_CANDIDATE_ACTIVITIES, location.radiusKm)
         for (activity in HOME_CANDIDATE_ACTIVITIES) {
             if (activity == excludeActivity) continue
-            val sessions = sessionsFor(activity)
-            if (sessions.isNotEmpty()) return activity to sessions.first()
+            val session = sessions.firstOrNull { it.activity == activity }
+            if (session != null) return activity to session
         }
         return null
     }
@@ -56,7 +61,7 @@ class AppState {
      * Invariant #1: a Session is never synthesized by stamping the user's requested "when"
      * onto a venue — it always carries its own independently-generated date/time.
      */
-    fun selectSession(venueName: String? = null) {
+    suspend fun selectSession(venueName: String? = null) {
         val sessions = sessionsFor(intent.activity)
         val chosen = if (venueName != null) sessions.firstOrNull { it.venueName == venueName } else sessions.firstOrNull()
         selectedSession = chosen ?: run {
@@ -106,7 +111,7 @@ class AppState {
         return g
     }
 
-    fun resolveSessionForGroup(g: Group) {
+    suspend fun resolveSessionForGroup(g: Group) {
         val sessions = sessionsFor(g.activity)
         val s = sessions.firstOrNull() ?: return // stays unassigned — nothing in radius
         g.venue = s.venueName
@@ -130,7 +135,7 @@ class AppState {
         return g
     }
 
-    fun joinExistingGroup(): Group? {
+    suspend fun joinExistingGroup(): Group? {
         val sessions = sessionsFor(intent.activity)
         val sess = sessions.firstOrNull() ?: return null
         val key = "open-${intent.activity}-${sess.id}"

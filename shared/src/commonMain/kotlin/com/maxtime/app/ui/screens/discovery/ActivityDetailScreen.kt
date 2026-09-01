@@ -8,6 +8,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -15,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.Session
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.PrimaryButton
@@ -28,11 +35,16 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import kotlinx.coroutines.launch
 
 @Composable
 fun ActivityDetailScreen(state: AppState, router: Router) {
+    val scope = rememberCoroutineScope()
     val info = state.activityInfo()
-    val sessions = state.sessionsFor()
+    var sessions by remember { mutableStateOf<List<Session>>(emptyList()) }
+    LaunchedEffect(state.intent.activity, state.location) {
+        sessions = state.sessionsFor()
+    }
 
     ScreenScaffold(
         topBar = { TopBar(title = state.intent.activity, onBack = { router.goBack() }) },
@@ -43,8 +55,10 @@ fun ActivityDetailScreen(state: AppState, router: Router) {
                     PrimaryButton(
                         "Book Solo", Modifier.weight(1f), enabled = sessions.isNotEmpty(),
                         onClick = {
-                            state.selectSession()
-                            router.navigate(Screen.SessionDetail)
+                            scope.launch {
+                                state.selectSession()
+                                router.navigate(Screen.SessionDetail)
+                            }
                         }
                     )
                 }
@@ -77,8 +91,10 @@ fun ActivityDetailScreen(state: AppState, router: Router) {
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     onClick = {
-                        state.selectSession(session.venueName)
-                        router.navigate(Screen.SessionDetail)
+                        scope.launch {
+                            state.selectSession(session.venueName)
+                            router.navigate(Screen.SessionDetail)
+                        }
                     }
                 ) {
                     Text(session.venueName, color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)

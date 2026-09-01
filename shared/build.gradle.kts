@@ -63,6 +63,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.core)
         }
         androidMain.dependencies {
             implementation(project.dependencies.platform(libs.firebase.bom))

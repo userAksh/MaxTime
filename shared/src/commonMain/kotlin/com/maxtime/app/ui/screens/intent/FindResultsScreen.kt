@@ -9,6 +9,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -16,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.Session
 import com.maxtime.app.data.StatusChipVariant
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomCta
@@ -31,11 +38,16 @@ import com.maxtime.app.ui.nav.Screen
 import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import kotlinx.coroutines.launch
 
 @Composable
 fun FindResultsScreen(state: AppState, router: Router) {
+    val scope = rememberCoroutineScope()
     val info = state.activityInfo()
-    val sessions = state.sessionsFor()
+    var sessions by remember { mutableStateOf<List<Session>>(emptyList()) }
+    LaunchedEffect(state.intent.activity, state.location) {
+        sessions = state.sessionsFor()
+    }
     val people = state.eligiblePeopleForIntent()
 
     ScreenScaffold(
@@ -51,8 +63,10 @@ fun FindResultsScreen(state: AppState, router: Router) {
                 ) {
                     SecondaryButton("Create an activity", Modifier.weight(1f), onClick = { router.navigate(Screen.CreateGroup) })
                     PrimaryButton("Book solo", Modifier.weight(1f), onClick = {
-                        state.selectSession()
-                        router.navigate(Screen.SessionDetail)
+                        scope.launch {
+                            state.selectSession()
+                            router.navigate(Screen.SessionDetail)
+                        }
                     })
                 }
             }
@@ -84,8 +98,10 @@ fun FindResultsScreen(state: AppState, router: Router) {
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     onClick = {
-                        val g = state.joinExistingGroup()
-                        if (g != null) router.navigate(Screen.GroupDetail)
+                        scope.launch {
+                            val g = state.joinExistingGroup()
+                            if (g != null) router.navigate(Screen.GroupDetail)
+                        }
                     }
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
