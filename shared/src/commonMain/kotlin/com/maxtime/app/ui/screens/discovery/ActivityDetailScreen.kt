@@ -1,0 +1,95 @@
+package com.maxtime.app.ui.screens.discovery
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.maxtime.app.data.AppState
+import com.maxtime.app.ui.components.BottomCta
+import com.maxtime.app.ui.components.MaxTimeCard
+import com.maxtime.app.ui.components.PrimaryButton
+import com.maxtime.app.ui.components.ScreenScaffold
+import com.maxtime.app.ui.components.SecondaryButton
+import com.maxtime.app.ui.components.SectionLabel
+import com.maxtime.app.ui.components.TopBar
+import com.maxtime.app.ui.nav.Router
+import com.maxtime.app.ui.nav.Screen
+import com.maxtime.app.ui.theme.MaxTimeColors
+import com.maxtime.app.ui.theme.MaxTimeShapes
+import com.maxtime.app.ui.theme.MaxTimeSpacing
+import com.maxtime.app.ui.theme.MaxTimeType
+
+@Composable
+fun ActivityDetailScreen(state: AppState, router: Router) {
+    val info = state.activityInfo()
+    val sessions = state.sessionsFor()
+
+    ScreenScaffold(
+        topBar = { TopBar(title = state.intent.activity, onBack = { router.goBack() }) },
+        bottomBar = {
+            BottomCta {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+                    SecondaryButton("Find People", Modifier.weight(1f), onClick = { router.navigate(Screen.FindResults) })
+                    PrimaryButton(
+                        "Book Solo", Modifier.weight(1f), enabled = sessions.isNotEmpty(),
+                        onClick = {
+                            state.selectSession()
+                            router.navigate(Screen.SessionDetail)
+                        }
+                    )
+                }
+            }
+        }
+    ) {
+        Box(
+            Modifier
+                .padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 14.dp)
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(MaxTimeShapes.large)
+                .background(MaxTimeColors.bg2),
+            contentAlignment = Alignment.Center
+        ) { Text(info.icon, fontSize = 40.sp) }
+
+        Text(state.intent.activity, color = MaxTimeColors.textStrong, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding))
+        Text("${info.category} · ${state.location.area}", style = MaxTimeType.caption, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 2.dp))
+        Text(info.description, style = MaxTimeType.body, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp))
+
+        SectionLabel("Upcoming sessions")
+        if (sessions.isEmpty()) {
+            Text(
+                "No sessions found within ${state.location.radiusLabel} of ${state.location.area}. Try expanding your radius or choosing another time.",
+                color = MaxTimeColors.muted, fontSize = 10.5.sp,
+                modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding)
+            )
+        } else {
+            sessions.forEach { session ->
+                MaxTimeCard(
+                    Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
+                    onClick = {
+                        state.selectSession(session.venueName)
+                        router.navigate(Screen.SessionDetail)
+                    }
+                ) {
+                    Text(session.venueName, color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    val priceLabel = if (session.price > 0) "₹${session.price}" else "Free"
+                    Text(
+                        "${session.date}, ${session.startTime} · $priceLabel · ${session.distanceKm} km away · ${session.spotsLeft} spots left",
+                        style = MaxTimeType.caption,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
