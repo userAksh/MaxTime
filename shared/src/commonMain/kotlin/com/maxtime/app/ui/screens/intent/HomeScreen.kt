@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,6 +70,7 @@ fun HomeScreen(state: AppState, router: Router) {
     val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(MaxTimeColors.screenGradient).statusBarsPadding()) {
+          Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             HomeTopBar()
             Text(
                 "◆ ${state.location.area} · within ${state.location.radiusLabel}  Change",
@@ -245,6 +247,7 @@ fun HomeScreen(state: AppState, router: Router) {
                     modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding)
                 )
             }
+          }
 
             HomeBottomNav(router)
         }
