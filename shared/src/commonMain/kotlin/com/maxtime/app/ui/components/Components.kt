@@ -27,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -42,16 +41,6 @@ import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
 
-/** Soft lime glow behind primary CTAs / active elements — a signature visual detail, not filler. */
-@Composable
-private fun GlowLayer(shape: Shape, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .blur(18.dp)
-            .background(MaxTimeColors.glowMid, shape)
-    )
-}
-
 @Composable
 fun PrimaryButton(
     text: String,
@@ -60,7 +49,6 @@ fun PrimaryButton(
     onClick: () -> Unit
 ) {
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        GlowLayer(MaxTimeShapes.medium, Modifier.fillMaxWidth().height(50.dp))
         Box(
             Modifier
                 .fillMaxWidth()
