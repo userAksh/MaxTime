@@ -26,14 +26,17 @@ import com.maxtime.app.ui.theme.MaxTimeType
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiscoverScreen(state: AppState, router: Router) {
-    ScreenScaffold(bottomBar = { BottomNav(router, active = Screen.Discover) }) {
-        Text("Discover", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
-        Text(
-            "Browse activities — no plans needed yet.",
-            style = MaxTimeType.body,
-            modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
-        )
-
+    ScreenScaffold(
+        topBar = {
+            Text("Discover", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
+            Text(
+                "Browse activities — no plans needed yet.",
+                style = MaxTimeType.body,
+                modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
+            )
+        },
+        bottomBar = { BottomNav(router, active = Screen.Discover) }
+    ) {
         ACTIVITY_CATEGORIES.forEach { (category, items) ->
             Text(
                 category.uppercase(),

@@ -27,14 +27,17 @@ import com.maxtime.app.ui.theme.MaxTimeType
  *  to Plans which is the same underlying data viewed schedule-first. */
 @Composable
 fun GroupsScreen(state: AppState, router: Router) {
-    ScreenScaffold(bottomBar = { BottomNav(router, active = Screen.Groups) }) {
-        Text("Groups", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
-        Text(
-            "Activities you've started or joined.",
-            style = MaxTimeType.body,
-            modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
-        )
-
+    ScreenScaffold(
+        topBar = {
+            Text("Groups", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
+            Text(
+                "Activities you've started or joined.",
+                style = MaxTimeType.body,
+                modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
+            )
+        },
+        bottomBar = { BottomNav(router, active = Screen.Groups) }
+    ) {
         val groups = state.groups.values.toList()
         if (groups.isEmpty()) {
             Text(

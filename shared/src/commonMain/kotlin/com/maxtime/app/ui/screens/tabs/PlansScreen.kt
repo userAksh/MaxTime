@@ -26,14 +26,17 @@ import com.maxtime.app.ui.theme.MaxTimeType
  *  people-first. Your personal record: upcoming, pending, and past. */
 @Composable
 fun PlansScreen(state: AppState, router: Router) {
-    ScreenScaffold(bottomBar = { BottomNav(router, active = Screen.Plans) }) {
-        Text("Plans", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
-        Text(
-            "Your upcoming and pending activities.",
-            style = MaxTimeType.body,
-            modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
-        )
-
+    ScreenScaffold(
+        topBar = {
+            Text("Plans", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
+            Text(
+                "Your upcoming and pending activities.",
+                style = MaxTimeType.body,
+                modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
+            )
+        },
+        bottomBar = { BottomNav(router, active = Screen.Plans) }
+    ) {
         val plans = state.groups.values.toList()
         if (plans.isEmpty()) {
             Text(

@@ -54,15 +54,15 @@ fun HomeScreen(state: AppState, router: Router) {
     val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(MaxTimeColors.screenGradient).statusBarsPadding()) {
-          Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             HomeTopBar()
             Text(
-                "◆ ${state.location.area} · within ${state.location.radiusLabel}  Change",
+                "📍 ${state.location.area}",
                 style = MaxTimeType.caption,
                 modifier = Modifier
-                    .padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp)
+                    .padding(start = MaxTimeSpacing.screenPadding, end = MaxTimeSpacing.screenPadding, top = 0.dp, bottom = 6.dp)
                     .clickable { state.locationConfirmed = false }
             )
+          Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             Box(
                 Modifier
                     .padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
@@ -245,7 +245,7 @@ fun HomeScreen(state: AppState, router: Router) {
 @Composable
 private fun HomeTopBar() {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp),
+        Modifier.fillMaxWidth().padding(start = MaxTimeSpacing.screenPadding, end = MaxTimeSpacing.screenPadding, top = 12.dp, bottom = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
