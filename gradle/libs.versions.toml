@@ -13,6 +13,8 @@ firebase = "2.6.0"
 firebase-bom = "34.17.0"
 google-services = "4.5.0"
 kotlinx-serialization = "1.11.0"
+play-services-location = "21.4.0"
+maps-compose = "8.4.0"
 
 [libraries]
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidx-activityCompose" }
@@ -26,6 +28,8 @@ firebase-firestore = { group = "dev.gitlive", name = "firebase-firestore", versi
 firebase-storage = { group = "dev.gitlive", name = "firebase-storage", version.ref = "firebase" }
 kotlinx-serialization-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-core", version.ref = "kotlinx-serialization" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "play-services-location" }
+maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "maps-compose" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

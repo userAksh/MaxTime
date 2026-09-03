@@ -67,6 +67,9 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation(libs.androidx.activity.compose)
+            implementation(libs.play.services.location)
+            implementation(libs.maps.compose)
         }
     }
 }

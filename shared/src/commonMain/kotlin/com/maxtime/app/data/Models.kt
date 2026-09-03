@@ -13,10 +13,16 @@ data class User(
     val phoneOrEmail: String? = null
 )
 
-/** Canonical location — the ONE source of truth. Nothing else duplicates "current location". */
+/** Canonical location — the ONE source of truth. Nothing else duplicates "current location".
+ *  [latitude]/[longitude] are only populated when [area] came from a real GPS fix or map pick
+ *  (see `LocationPopup`) — manual text entry leaves them null. Nothing in this app's mocked
+ *  session/distance logic reads them yet, but real device coordinates are worth keeping once
+ *  we have them rather than throwing them away down to just a label. */
 data class UserLocation(
     val area: String,
-    val radiusKm: Int
+    val radiusKm: Int,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 ) {
     val radiusLabel: String get() = "$radiusKm km"
 }

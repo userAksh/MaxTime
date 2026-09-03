@@ -35,6 +35,12 @@ targets:
       properties:
         UILaunchScreen: {}
         CADisableMinimumFrameDurationOnPhone: true
+        NSLocationWhenInUseUsageDescription: "MaxTime uses your location to show nearby activities, open slots, and people up for the same thing."
+        # This app's background is always dark, regardless of the device's system light/dark
+        # mode setting — force light (white) status bar content unconditionally instead of
+        # leaving it to the OS default (dark icons in system light mode would be invisible).
+        UIViewControllerBasedStatusBarAppearance: false
+        UIStatusBarStyle: UIStatusBarStyleLightContent
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - app-1-130636243911-ios-d067622960adf8cc782fe2

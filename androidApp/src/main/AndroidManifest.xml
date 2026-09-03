@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
         android:name=".MaxTimeApp"
@@ -7,6 +9,11 @@
         android:icon="@mipmap/ic_launcher"
         android:label="MaxTime"
         android:theme="@style/Theme.MaxTime">
+        <!-- Populated from local.properties (MAPS_API_KEY) at build time — see androidApp/build.gradle.kts.
+             Never commit a real key here; the map picker just won't render tiles until one is set. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

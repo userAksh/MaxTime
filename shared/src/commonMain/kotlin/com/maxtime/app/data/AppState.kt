@@ -16,13 +16,18 @@ class AppState {
     private val sessionRepository = SessionRepository()
 
     var currentUser by mutableStateOf(User(name = "Priya Sharma"))
-    var location by mutableStateOf(UserLocation(area = "Saket, South Delhi", radiusKm = 5))
+    // A previously-confirmed location (real GPS fix, map pick, or submitted manual entry) is
+    // restored immediately so a returning user never sees the location sheet again — a "Skip for
+    // now" deliberately never persists, so skipping doesn't get silently treated the same as
+    // actually setting one (see persistConfirmedLocation).
+    private val persistedLocation = loadPersistedLocation()
+    var location by mutableStateOf(persistedLocation ?: UserLocation(area = "Saket, South Delhi", radiusKm = 5))
     var intent by mutableStateOf(ActivityIntent(activity = "Badminton", whenLabel = "Sat, 9 AM", peopleNeeded = 2))
     var selectedSession by mutableStateOf<Session?>(null)
     var selectedGroup by mutableStateOf<Group?>(null)
     var selectedPersonName by mutableStateOf<String?>(null)
     var freeInvitesLeft by mutableStateOf(3)
-    var locationConfirmed by mutableStateOf(false)
+    var locationConfirmed by mutableStateOf(persistedLocation != null)
     var paymentFailed by mutableStateOf(false)
 
     /** key: person name -> Invite. */
