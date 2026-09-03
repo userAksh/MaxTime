@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -180,16 +182,21 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
             AuthView.ENTRY -> {
                 Text("Enter your number and we will text you a code.", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
                 FieldLabel("Mobile number")
-                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Box(
-                        Modifier.clip(MaxTimeShapes.medium).background(MaxTimeColors.cardBg)
+                        Modifier.fillMaxHeight().clip(MaxTimeShapes.medium).background(MaxTimeColors.cardBg)
                             .border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.medium)
-                            .padding(horizontal = 14.dp, vertical = 13.dp)
+                            .padding(horizontal = 14.dp, vertical = 13.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) { Text("+91", color = MaxTimeColors.textStrong, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp) }
                     Box(
-                        Modifier.weight(1f).clip(MaxTimeShapes.medium).background(MaxTimeColors.cardBg)
+                        Modifier.weight(1f).fillMaxHeight().clip(MaxTimeShapes.medium).background(MaxTimeColors.cardBg)
                             .border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.medium)
-                            .padding(horizontal = 14.dp, vertical = 13.dp)
+                            .padding(horizontal = 14.dp, vertical = 13.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
                         MaxTimeTextField(phone, { phone = it }, "98765 43210", KeyboardType.Phone)
                     }
