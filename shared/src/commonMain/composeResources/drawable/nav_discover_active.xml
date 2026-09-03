@@ -9,17 +9,17 @@
         android:rotation="-13">
         <path
             android:fillColor="#7FAE10"
-            android:pathData="M6.5,6.5 H11.5 A2,2 0 0,1 13.5,8.5 V16.5 A2,2 0 0,1 11.5,18.5 H6.5 A2,2 0 0,1 4.5,16.5 V8.5 A2,2 0 0,1 6.5,6.5 Z"/>
+            android:pathData="M6.7,5.5 H11.7 A2,2 0 0,1 13.7,7.5 V15.5 A2,2 0 0,1 11.7,17.5 H6.7 A2,2 0 0,1 4.7,15.5 V7.5 A2,2 0 0,1 6.7,5.5 Z"/>
     </group>
-    <path
-        android:fillColor="#C6FF3D"
-        android:pathData="M9.5,5 H14.5 A2,2 0 0,1 16.5,7 V15 A2,2 0 0,1 14.5,17 H9.5 A2,2 0 0,1 7.5,15 V7 A2,2 0 0,1 9.5,5 Z"/>
     <group
         android:pivotX="12"
         android:pivotY="20"
         android:rotation="13">
         <path
-            android:fillColor="#E2FF8E"
-            android:pathData="M12.5,6.5 H17.5 A2,2 0 0,1 19.5,8.5 V16.5 A2,2 0 0,1 17.5,18.5 H12.5 A2,2 0 0,1 10.5,16.5 V8.5 A2,2 0 0,1 12.5,6.5 Z"/>
+            android:fillColor="#7FAE10"
+            android:pathData="M12.3,5.5 H17.3 A2,2 0 0,1 19.3,7.5 V15.5 A2,2 0 0,1 17.3,17.5 H12.3 A2,2 0 0,1 10.3,15.5 V7.5 A2,2 0 0,1 12.3,5.5 Z"/>
     </group>
+    <path
+        android:fillColor="#C6FF3D"
+        android:pathData="M9.5,6 H14.5 A2,2 0 0,1 16.5,8 V16 A2,2 0 0,1 14.5,18 H9.5 A2,2 0 0,1 7.5,16 V8 A2,2 0 0,1 9.5,6 Z"/>
 </vector>
