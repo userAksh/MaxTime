@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.maxtime.app.data.AppState
+import dev.gitlive.firebase.Firebase
+import dev.gitlive.firebase.auth.auth
 import com.maxtime.app.ui.nav.Router
 import com.maxtime.app.ui.nav.Screen
 import com.maxtime.app.ui.nav.onboardingOrder
@@ -24,7 +26,11 @@ import com.maxtime.app.ui.theme.MaxTimeTheme
 @Composable
 fun MaxTimeApp() {
     val state = remember { AppState() }
-    val router = remember { Router(Screen.Splash) }
+    // A prior session (Firebase Auth caches it natively) means this person already finished
+    // onboarding — land them back on Home instead of walking Splash -> AgeGate -> Auth -> ...
+    // again. `currentUser` reads Firebase's own restored-on-launch session synchronously, no
+    // extra async gating/loading state needed here.
+    val router = remember { Router(if (Firebase.auth.currentUser != null) Screen.Home else Screen.Splash) }
 
     MaxTimeTheme {
         if (router.current in onboardingOrder) {
