@@ -1,5 +1,12 @@
 package com.maxtime.app.data
 
+/** Shared with FindWhenCustomScreen and CreateGroupScreen — one time vocabulary so a picked
+ *  slot can be matched back against a real Session's startTime later. */
+val TIME_SLOTS = listOf("7:00 AM", "9:00 AM", "11:00 AM", "4:00 PM", "6:00 PM", "8:00 PM")
+
+/** Shared with FindWhenCustomScreen and CreateGroupScreen — (minutes, label) pairs. */
+val DURATION_OPTIONS = listOf(30 to "30 min", 60 to "1 hr", 90 to "1.5 hr", 120 to "2 hr")
+
 /** Activity categories — keep this structure, do not go sports-only. */
 val ACTIVITY_CATEGORIES: LinkedHashMap<String, List<String>> = linkedMapOf(
     "Fitness" to listOf("Gym", "Yoga", "Pilates", "Boxing", "CrossFit", "Swimming", "Zumba"),

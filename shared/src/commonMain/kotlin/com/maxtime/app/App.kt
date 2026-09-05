@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.firebase.UserProfileRepository
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
 import com.maxtime.app.ui.nav.Router
@@ -32,6 +34,27 @@ fun MaxTimeApp() {
     // extra async gating/loading state needed here.
     val router = remember { Router(if (Firebase.auth.currentUser != null) Screen.Home else Screen.Splash) }
 
+    // A returning user whose Firebase session was restored skips straight to Home (above) —
+    // but their name/interests, saved to Firestore during onboarding, still need to be pulled
+    // back into this fresh AppState so Home doesn't show the hardcoded default name forever.
+    LaunchedEffect(Unit) {
+        val uid = Firebase.auth.currentUser?.uid
+        if (uid != null) {
+            val profile = UserProfileRepository().loadProfile(uid)
+            if (profile != null) {
+                if (profile.name.isNotBlank()) {
+                    state.currentUser = state.currentUser.copy(name = profile.name)
+                }
+                if (profile.interests.isNotEmpty()) {
+                    state.interests = profile.interests.mapValues { it.value.toSet() }
+                }
+            }
+        }
+        // Restores whatever groups this name created/joined last session — after the real name
+        // (if any) is in place, so it matches what those groups were actually saved under.
+        state.loadPersistedGroups()
+    }
+
     MaxTimeTheme {
         if (router.current in onboardingOrder) {
             Box(
@@ -49,7 +72,7 @@ fun MaxTimeApp() {
                             onVerified = { router.navigate(Screen.Profile) }
                         )
                         Screen.Profile -> ProfileScreen(state, onContinue = { router.navigate(Screen.Interests) })
-                        Screen.Interests -> InterestsScreen(onFinish = { router.navigate(Screen.Home) })
+                        Screen.Interests -> InterestsScreen(state, onFinish = { router.navigate(Screen.Home) })
                         else -> Unit
                     }
                 }

@@ -1,6 +1,7 @@
 package com.maxtime.app.ui.screens.intent
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.Session
 import com.maxtime.app.data.StatusChipVariant
+import com.maxtime.app.data.sessionDateMatch
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.MaxTimeCard
@@ -53,10 +55,13 @@ fun FindResultsScreen(state: AppState, router: Router) {
         sessionsLoading = false
     }
     val people = state.eligiblePeopleForIntent()
+    val shown = sessions.take(2)
+    val matches = shown.map { sessionDateMatch(it.date, state.intent.whenLabel) }
+    val noneMatchRequest = shown.isNotEmpty() && matches.all { it != null } && matches.none { it!!.matchesRequest }
 
     ScreenScaffold(
         topBar = { TopBar(onBack = { router.goBack() }) },
-        bottomBar = {
+        bottomBar = if (!sessionsLoading && noneMatchRequest) null else { {
             BottomCta {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -71,7 +76,7 @@ fun FindResultsScreen(state: AppState, router: Router) {
                     })
                 }
             }
-        }
+        } }
     ) {
         MaxTimeCard(
             Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp),
@@ -91,15 +96,40 @@ fun FindResultsScreen(state: AppState, router: Router) {
             modifier = Modifier.fillMaxWidth().padding(horizontal = MaxTimeSpacing.screenPadding)
         )
 
-        SectionLabel("Join a group", actionText = "No invite used")
         if (sessionsLoading) {
+            SectionLabel("Join a group")
             ShimmerCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp))
         } else if (sessions.isEmpty()) {
+            SectionLabel("Join a group")
             EmptyNote("Nothing nearby yet. Try expanding your radius or choose another time.")
         } else {
-            sessions.take(2).forEachIndexed { index, session ->
+            if (noneMatchRequest) {
+                Text(
+                    "Nothing filling for ${state.intent.whenLabel.lowercase()} yet — you can still",
+                    color = MaxTimeColors.muted2, fontSize = 11.5.sp,
+                    modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp)
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SecondaryButton("Create an activity", Modifier.weight(1f), onClick = { router.navigate(Screen.CreateGroup) })
+                    PrimaryButton("Book solo", Modifier.weight(1f), onClick = {
+                        scope.launch {
+                            state.selectSession()
+                            router.navigate(Screen.SessionDetail)
+                        }
+                    })
+                }
+            }
+            SectionLabel("Join a group")
+            shown.forEachIndexed { index, session ->
+                val dateMatch = matches[index]
+                val mismatched = dateMatch != null && !dateMatch.matchesRequest
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
+                    backgroundColor = if (mismatched) MaxTimeColors.bg2 else MaxTimeColors.cardBg,
+                    borderColor = if (mismatched) MaxTimeColors.bg3 else MaxTimeColors.cardBorder,
                     onClick = {
                         scope.launch {
                             val g = state.joinExistingGroup()
@@ -110,19 +140,30 @@ fun FindResultsScreen(state: AppState, router: Router) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(end = 10.dp)) {
                             val going = if (index == 0) "3 going · 1 spot open" else "2 going · 2 spots open"
-                            Text(going, color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                            Text("${session.venueName} · ${session.date}, ${session.startTime} · ${session.distanceKm} km", style = MaxTimeType.caption)
+                            Text(going, color = if (mismatched) MaxTimeColors.muted2 else MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                            val dayLabel = dateMatch?.relativeLabel ?: session.date
+                            Text("${session.venueName} · $dayLabel, ${session.startTime} · ${session.distanceKm} km", style = MaxTimeType.caption)
                         }
-                        StatusChip("Filling", StatusChipVariant.FILLING)
+                        if (mismatched) {
+                            StatusChip("Different day", StatusChipVariant.FULL)
+                        } else {
+                            StatusChip("Filling", StatusChipVariant.FILLING)
+                        }
                     }
-                    if (index == 0) {
+                    if (index == 0 && !mismatched) {
                         Text("◆ Ayesha, who you know, is going", color = MaxTimeColors.accent2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         AvatarStack(if (index == 0) listOf("A", "B", "C") else listOf("A", "B"))
-                        androidx.compose.foundation.layout.Box(
-                            Modifier.clip(RoundedCornerShape(9.dp)).background(MaxTimeColors.accent).padding(horizontal = 14.dp, vertical = 7.dp)
-                        ) { Text("Join group", color = MaxTimeColors.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        if (mismatched) {
+                            androidx.compose.foundation.layout.Box(
+                                Modifier.clip(RoundedCornerShape(9.dp)).background(MaxTimeColors.cardBg).border(1.dp, MaxTimeColors.cardBorder, RoundedCornerShape(9.dp)).padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) { Text("Join group", color = MaxTimeColors.muted2, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        } else {
+                            androidx.compose.foundation.layout.Box(
+                                Modifier.clip(RoundedCornerShape(9.dp)).background(MaxTimeColors.accent).padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) { Text("Join group", color = MaxTimeColors.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        }
                     }
                 }
             }

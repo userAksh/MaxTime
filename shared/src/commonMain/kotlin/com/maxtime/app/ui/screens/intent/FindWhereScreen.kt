@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,7 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.UserLocation
+import com.maxtime.app.data.location.LocationResult
+import com.maxtime.app.data.location.rememberLocationContext
+import com.maxtime.app.data.location.requestCurrentLocation
+import com.maxtime.app.data.location.reverseGeocode
 import com.maxtime.app.ui.components.BottomCta
+import com.maxtime.app.ui.components.LatLng
+import com.maxtime.app.ui.components.MapPicker
 import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.TopBar
@@ -36,11 +43,79 @@ import com.maxtime.app.ui.nav.Screen
 import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeType
+import kotlinx.coroutines.launch
 
 @Composable
 fun FindWhereScreen(state: AppState, router: Router) {
     var manualArea by remember { mutableStateOf(state.location.area.substringBefore(',')) }
     var radiusKm by remember { mutableStateOf(state.location.radiusKm) }
+    var isLocating by remember { mutableStateOf(false) }
+    var locationError by remember { mutableStateOf<String?>(null) }
+    var showMapPicker by remember { mutableStateOf(false) }
+    var isOpeningMap by remember { mutableStateOf(false) }
+    var mapPickerInitial by remember { mutableStateOf<LatLng?>(null) }
+    val locationContext = rememberLocationContext()
+    val scope = rememberCoroutineScope()
+
+    fun useCoordinates(latitude: Double, longitude: Double) {
+        isLocating = true
+        scope.launch {
+            val label = reverseGeocode(latitude, longitude) ?: state.location.area
+            state.location = UserLocation(area = label, radiusKm = radiusKm, latitude = latitude, longitude = longitude)
+            isLocating = false
+            router.navigate(Screen.FindResults)
+        }
+    }
+
+    fun useCurrentLocation() {
+        locationError = null
+        isLocating = true
+        scope.launch {
+            when (val result = requestCurrentLocation(locationContext)) {
+                is LocationResult.Success -> useCoordinates(result.latitude, result.longitude)
+                LocationResult.PermissionDenied -> {
+                    locationError = "Location permission denied — enter your area manually below."
+                    isLocating = false
+                }
+                LocationResult.LocationDisabled -> {
+                    locationError = "Turn on location services to use this, or enter your area manually below."
+                    isLocating = false
+                }
+                is LocationResult.Error -> {
+                    locationError = result.message
+                    isLocating = false
+                }
+            }
+        }
+    }
+
+    fun openMapPicker() {
+        val known = state.location.latitude?.let { lat -> state.location.longitude?.let { lng -> LatLng(lat, lng) } }
+        if (known != null) {
+            mapPickerInitial = known
+            showMapPicker = true
+            return
+        }
+        isOpeningMap = true
+        scope.launch {
+            val result = requestCurrentLocation(locationContext)
+            mapPickerInitial = (result as? LocationResult.Success)?.let { LatLng(it.latitude, it.longitude) }
+            isOpeningMap = false
+            showMapPicker = true
+        }
+    }
+
+    if (showMapPicker) {
+        MapPicker(
+            initial = mapPickerInitial,
+            onConfirm = { picked ->
+                showMapPicker = false
+                useCoordinates(picked.latitude, picked.longitude)
+            },
+            onCancel = { showMapPicker = false }
+        )
+        return
+    }
 
     ScreenScaffold(
         topBar = { TopBar(onBack = { router.goBack() }) },
@@ -67,13 +142,22 @@ fun FindWhereScreen(state: AppState, router: Router) {
                 .fillMaxWidth()
                 .clip(MaxTimeShapes.medium)
                 .background(MaxTimeColors.accent)
-                .clickable {
-                    state.location = UserLocation(area = "Hauz Khas, South Delhi", radiusKm = radiusKm)
-                    router.navigate(Screen.FindResults)
-                }
+                .clickable(enabled = !isLocating) { useCurrentLocation() }
                 .padding(14.dp),
             contentAlignment = Alignment.Center
-        ) { Text("◆ Use current location", color = MaxTimeColors.onAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+        ) {
+            Text(
+                if (isLocating) "Locating…" else "◆ Use current location",
+                color = MaxTimeColors.onAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp
+            )
+        }
+        locationError?.let {
+            Text(
+                it, color = MaxTimeColors.red, fontSize = 11.5.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+        }
 
         Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
             Text("or enter manually", color = MaxTimeColors.muted, fontSize = 11.sp)
@@ -118,8 +202,14 @@ fun FindWhereScreen(state: AppState, router: Router) {
                 .clip(MaxTimeShapes.medium)
                 .background(MaxTimeColors.cardBg)
                 .border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.medium)
+                .clickable(enabled = !isOpeningMap) { openMapPicker() }
                 .padding(vertical = 13.dp),
             contentAlignment = Alignment.Center
-        ) { Text("🗺 Select on map instead", color = MaxTimeColors.muted2, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp) }
+        ) {
+            Text(
+                if (isOpeningMap) "Finding your location…" else "🗺 Select on map instead",
+                color = MaxTimeColors.muted2, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp
+            )
+        }
     }
 }

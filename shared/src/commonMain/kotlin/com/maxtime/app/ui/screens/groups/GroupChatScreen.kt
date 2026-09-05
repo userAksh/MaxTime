@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.ChatMessage
+import com.maxtime.app.data.firebase.ChatRepository
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.TopBar
 import com.maxtime.app.ui.nav.Router
@@ -31,14 +33,39 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import dev.gitlive.firebase.Firebase
+import dev.gitlive.firebase.auth.auth
+import kotlinx.coroutines.launch
 
 @Composable
 fun GroupChatScreen(state: AppState, router: Router) {
     val group = state.selectedGroup ?: state.getOrCreateMyGroup().also { state.selectedGroup = it }
+    val myId = Firebase.auth.currentUser?.uid ?: state.currentUser.id
+    val chatRepository = remember { ChatRepository() }
+    val messagesFlow = remember(group.id) { chatRepository.observeMessages(group.id) }
+    val messages by messagesFlow.collectAsState(initial = emptyList<ChatMessage>())
+    var draft by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    fun send() {
+        val text = draft
+        if (text.isBlank()) return
+        draft = ""
+        scope.launch { chatRepository.sendMessage(group.id, myId, state.currentUser.name, text) }
+    }
 
     ScreenScaffold(
-        topBar = { TopBar(title = "${group.activity} Group", onBack = { router.goBack() }) },
-        bottomBar = { ChatInputRow() }
+        topBar = { TopBar(title = "${group.activity} Group", onBack = { router.navigate(Screen.Groups) }) },
+        bottomBar = { ChatInputRow(draft, { draft = it }, onSend = ::send) }
     ) {
         Row(
             Modifier
@@ -53,7 +80,7 @@ fun GroupChatScreen(state: AppState, router: Router) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                Text("${group.activity} · ${group.members}/${group.capacity} confirmed", color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("${group.activity} · ${group.members}/${group.capacity} people confirmed", color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 val priceLabel = if (group.priceNormal > 0) " · ₹${group.priceNormal}" else ""
                 Text("${group.whenLabel} · ${group.venue ?: "Session pending"}$priceLabel", style = MaxTimeType.caption)
             }
@@ -62,8 +89,11 @@ fun GroupChatScreen(state: AppState, router: Router) {
 
         Column(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SystemEvent("${group.creator} created this activity")
-            ChatBubble(group.creator, "I can reach a bit early, that work?", fromMe = false)
-            ChatBubble(null, "Works for me too", fromMe = true)
+            if (messages.isEmpty()) {
+                SystemEvent("No messages yet — say hello")
+            } else {
+                messages.forEach { msg -> ChatBubble(msg.senderName, msg.text, fromMe = msg.senderId == myId) }
+            }
             val remaining = group.openSlots
             SystemEvent("$remaining spot${if (remaining == 1) "" else "s"} remain${if (remaining == 1) "s" else ""}")
         }
@@ -100,7 +130,7 @@ private fun ChatBubble(sender: String?, text: String, fromMe: Boolean) {
 }
 
 @Composable
-private fun ChatInputRow() {
+private fun ChatInputRow(value: String, onValueChange: (String) -> Unit, onSend: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -113,9 +143,22 @@ private fun ChatInputRow() {
     ) {
         Box(
             Modifier.weight(1f).clip(MaxTimeShapes.pill).background(MaxTimeColors.cardBg).border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.pill).padding(horizontal = 14.dp, vertical = 11.dp)
-        ) { Text("Message the group…", color = MaxTimeColors.muted, fontSize = 12.5.sp) }
+        ) {
+            Box {
+                if (value.isEmpty()) {
+                    Text("Message the group…", color = MaxTimeColors.muted, fontSize = 12.5.sp)
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    textStyle = TextStyle(color = MaxTimeColors.textStrong, fontSize = 12.5.sp),
+                    cursorBrush = SolidColor(MaxTimeColors.accent),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
         Box(
-            Modifier.size(38.dp).clip(CircleShape).background(MaxTimeColors.accent),
+            Modifier.size(38.dp).clip(CircleShape).background(MaxTimeColors.accent).clickable { onSend() },
             contentAlignment = Alignment.Center
         ) { Text("↑", color = MaxTimeColors.onAccent, fontWeight = FontWeight.ExtraBold) }
     }

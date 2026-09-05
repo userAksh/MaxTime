@@ -9,9 +9,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +34,7 @@ import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.SecondaryButton
 import com.maxtime.app.ui.components.StatusChip
+import com.maxtime.app.ui.components.SuccessToast
 import com.maxtime.app.ui.components.TopBar
 import com.maxtime.app.ui.nav.Router
 import com.maxtime.app.ui.nav.Screen
@@ -40,27 +47,42 @@ import kotlinx.coroutines.launch
 fun GroupDetailScreen(state: AppState, router: Router) {
     val group = state.selectedGroup ?: state.getOrCreateMyGroup().also { state.selectedGroup = it }
 
-    ScreenScaffold(
-        topBar = { TopBar(title = "Group", onBack = { router.goBack() }) },
-        bottomBar = { GroupFooter(state, group, router) }
-    ) {
-        Column2(group)
-
-        if (group.connections.isNotEmpty()) {
-            Text(
-                "◆ ${group.connections.joinToString(" and ")}, who you know, ${if (group.connections.size > 1) "are" else "is"} going",
-                color = MaxTimeColors.accent2, fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp)
-            )
+    var showCreatedToast by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (state.justCreatedActivity) {
+            state.justCreatedActivity = false
+            showCreatedToast = true
         }
+    }
 
-        when {
-            group.status == GroupStatus.DEADLINE_MISSED -> DeadlineMissedBody(group)
-            group.status == GroupStatus.CANCELLED -> CancelledBody()
-            group.status == GroupStatus.FULL -> FullBody(group, router)
-            group.venue == null -> UnassignedBody(group)
-            else -> ActiveBody(group)
+    Box(Modifier.fillMaxSize()) {
+        ScreenScaffold(
+            topBar = { TopBar(title = "Group", onBack = { router.navigate(Screen.Groups) }) },
+            bottomBar = { GroupFooter(state, group, router) }
+        ) {
+            Column2(group)
+
+            if (group.connections.isNotEmpty()) {
+                Text(
+                    "◆ ${group.connections.joinToString(" and ")}, who you know, ${if (group.connections.size > 1) "are" else "is"} going",
+                    color = MaxTimeColors.accent2, fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp)
+                )
+            }
+
+            when {
+                group.effectiveStatus == GroupStatus.DEADLINE_MISSED -> DeadlineMissedBody(group)
+                group.effectiveStatus == GroupStatus.CANCELLED -> CancelledBody()
+                group.effectiveStatus == GroupStatus.FULL -> FullBody(group, router)
+                group.venue == null -> UnassignedBody(group)
+                else -> ActiveBody(group)
+            }
         }
+        SuccessToast(
+            "Activity created — waiting for people to join",
+            visible = showCreatedToast,
+            onDismiss = { showCreatedToast = false }
+        )
     }
 }
 
@@ -177,7 +199,7 @@ private fun GroupFooter(state: AppState, group: Group, router: Router) {
     val scope = rememberCoroutineScope()
     BottomCta {
         when {
-            group.status == GroupStatus.DEADLINE_MISSED -> {
+            group.effectiveStatus == GroupStatus.DEADLINE_MISSED -> {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Find another session", Modifier.weight(1f), onClick = { router.navigate(Screen.FindResults) })
                     PrimaryButton("Confirm ₹${group.priceIfDeadlineMissed}", Modifier.weight(1f), onClick = {
@@ -196,10 +218,10 @@ private fun GroupFooter(state: AppState, group: Group, router: Router) {
                     }
                 )
             }
-            group.status == GroupStatus.CANCELLED -> {
+            group.effectiveStatus == GroupStatus.CANCELLED -> {
                 PrimaryButton("Find another session", onClick = { router.navigate(Screen.FindResults) })
             }
-            group.status == GroupStatus.FULL -> {
+            group.effectiveStatus == GroupStatus.FULL -> {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Find a similar session", Modifier.weight(1f), onClick = { router.navigate(Screen.FindResults) })
                     PrimaryButton("Proceed to Booking", Modifier.weight(1f), onClick = { router.navigate(Screen.GroupChat) })
@@ -219,9 +241,22 @@ private fun GroupFooter(state: AppState, group: Group, router: Router) {
                 PrimaryButton("View Group", onClick = { router.navigate(Screen.GroupChat) })
             }
             else -> {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SecondaryButton("Leave", Modifier.weight(1f), onClick = { router.navigate(Screen.Home) })
-                    PrimaryButton("Join Group", Modifier.weight(1f), onClick = { router.navigate(Screen.GroupChat) })
+                // The creator (and anyone who's already tapped Join Group before) is already a
+                // member the moment the group exists — offering them "Join Group"/"Leave" again
+                // makes no sense and, until now, "Join Group" didn't even add anyone: it just
+                // navigated to chat. Only someone who found this group and isn't in it yet
+                // (e.g. via "Join a group" in Find Results) should see that choice.
+                val alreadyMember = group.memberList.any { it.personName == state.currentUser.name }
+                if (alreadyMember) {
+                    PrimaryButton("Open Group Chat", onClick = { router.navigate(Screen.GroupChat) })
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton("Not now", Modifier.weight(1f), onClick = { router.navigate(Screen.Home) })
+                        PrimaryButton("Join Group", Modifier.weight(1f), onClick = {
+                            state.joinGroup(group)
+                            router.navigate(Screen.GroupChat)
+                        })
+                    }
                 }
                 Text(
                     "Simulate: deadline reached", color = MaxTimeColors.muted, fontSize = 11.5.sp,

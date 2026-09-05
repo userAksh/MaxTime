@@ -20,6 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.DURATION_OPTIONS
+import com.maxtime.app.data.TIME_SLOTS
+import com.maxtime.app.data.upcomingDayLabels
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.PrimaryButton
@@ -31,21 +34,22 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeType
 
-private val DAYS = listOf("Mon 2", "Tue 3", "Wed 4", "Thu 5", "Fri 6", "Sat 7")
-private val TIMES = listOf("7:00 AM", "9:00 AM", "11:00 AM", "4:00 PM", "6:00 PM", "8:00 PM")
+private val TIMES = TIME_SLOTS
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FindWhenCustomScreen(state: AppState, router: Router) {
-    var selectedDay by remember { mutableStateOf(DAYS[1]) }
+    val days = remember { upcomingDayLabels(7) }
+    var selectedDay by remember { mutableStateOf(days.first()) }
     var selectedTime by remember { mutableStateOf(TIMES[1]) }
+    var selectedDuration by remember { mutableStateOf(state.intent.durationMinutes) }
 
     ScreenScaffold(
         topBar = { TopBar(onBack = { router.goBack() }) },
         bottomBar = {
             BottomCta {
                 PrimaryButton("Continue to Where", onClick = {
-                    state.intent = state.intent.copy(whenLabel = "$selectedDay, $selectedTime")
+                    state.intent = state.intent.copy(whenLabel = "$selectedDay, $selectedTime", durationMinutes = selectedDuration)
                     router.navigate(Screen.FindWhere)
                 })
             }
@@ -60,7 +64,7 @@ fun FindWhenCustomScreen(state: AppState, router: Router) {
 
         Text("DATE", color = MaxTimeColors.muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp))
         FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            DAYS.forEach { day -> PickChip(day, day == selectedDay) { selectedDay = day } }
+            days.forEach { day -> PickChip(day, day == selectedDay) { selectedDay = day } }
         }
 
         Text("TIME", color = MaxTimeColors.muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 4.dp))
@@ -68,9 +72,17 @@ fun FindWhenCustomScreen(state: AppState, router: Router) {
             TIMES.forEach { time -> PickChip(time, time == selectedTime) { selectedTime = time } }
         }
 
+        Text("HOW LONG", color = MaxTimeColors.muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 4.dp))
+        FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            DURATION_OPTIONS.forEach { (minutes, label) -> PickChip(label, minutes == selectedDuration) { selectedDuration = minutes } }
+        }
+
         MaxTimeCard(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
             Text("$selectedDay, $selectedTime", color = MaxTimeColors.textStrong, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
-            Text("Selected date & time", style = MaxTimeType.caption, modifier = Modifier.padding(top = 4.dp))
+            Text(
+                "Selected date & time · ${DURATION_OPTIONS.first { it.first == selectedDuration }.second}",
+                style = MaxTimeType.caption, modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }

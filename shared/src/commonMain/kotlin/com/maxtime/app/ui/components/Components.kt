@@ -1,11 +1,14 @@
 package com.maxtime.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,10 +22,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +45,7 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import kotlinx.coroutines.delay
 
 @Composable
 fun PrimaryButton(
@@ -196,6 +202,8 @@ fun AvatarStack(names: List<String>, modifier: Modifier = Modifier, size: Dp = 2
 fun MaxTimeCard(
     modifier: Modifier = Modifier,
     shape: Shape = MaxTimeShapes.medium,
+    backgroundColor: Color = MaxTimeColors.cardBg,
+    borderColor: Color = MaxTimeColors.cardBorder,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -203,8 +211,8 @@ fun MaxTimeCard(
         modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(MaxTimeColors.cardBg)
-            .border(1.dp, MaxTimeColors.cardBorder, shape)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(15.dp),
         content = content
@@ -275,5 +283,34 @@ fun TopBar(title: String = "", modifier: Modifier = Modifier, onBack: (() -> Uni
         if (onBack != null) BackButton(onClick = onBack) else Box(Modifier.size(32.dp))
         Text(title.uppercase(), style = MaxTimeType.metaLabel)
         Box(Modifier.size(32.dp))
+    }
+}
+
+/**
+ * A pinned-to-top confirmation banner that dismisses itself after a couple seconds — no native
+ * Toast/Snackbar API needed (Android has one, iOS doesn't have an equivalent), so it renders
+ * identically on both platforms. Caller owns [visible]; this only ever turns it back off.
+ */
+@Composable
+fun SuccessToast(message: String, visible: Boolean, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    LaunchedEffect(visible) {
+        if (visible) {
+            delay(2200)
+            onDismiss()
+        }
+    }
+    Box(modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 10.dp)) {
+        AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(MaxTimeShapes.medium)
+                    .background(MaxTimeColors.accent)
+                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(message, color = MaxTimeColors.onAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
+            }
+        }
     }
 }

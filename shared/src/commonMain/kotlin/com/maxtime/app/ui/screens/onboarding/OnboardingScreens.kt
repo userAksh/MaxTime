@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.DEFAULT_SELECTED_INTERESTS
 import com.maxtime.app.data.firebase.AuthRepository
 import com.maxtime.app.data.firebase.UserProfileRepository
 import com.maxtime.app.data.firebase.buildPhoneVerificationProvider
@@ -253,12 +254,15 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
 
 @Composable
 fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
+    var name by remember { mutableStateOf(state.currentUser.name) }
     var isSaving by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val profileRepository = remember { UserProfileRepository() }
 
     fun continueTapped() {
+        val finalName = name.trim().ifBlank { state.currentUser.name }
+        state.currentUser = state.currentUser.copy(name = finalName)
         val uid = Firebase.auth.currentUser?.uid
         if (uid == null) {
             onContinue()
@@ -268,8 +272,7 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
         isSaving = true
         scope.launch {
             try {
-                profileRepository.saveProfile(uid, state.currentUser.name, Firebase.auth.currentUser?.phoneNumber)
-                profileRepository.loadProfile(uid)
+                profileRepository.saveProfile(uid, finalName, Firebase.auth.currentUser?.phoneNumber)
                 onContinue()
             } catch (e: Exception) {
                 isSaving = false
@@ -289,7 +292,7 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
             contentAlignment = Alignment.Center
         ) { Text("+", color = MaxTimeColors.muted, fontSize = 26.sp) }
         FieldLabel("Full name")
-        FieldValueBox(state.currentUser.name)
+        EditableFieldBox(name, { name = it }, "Your name")
         FieldLabel("Date of birth")
         FieldValueBox("14 / 03 / 1998")
         errorText?.let {
@@ -297,25 +300,35 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
         }
         Spacer(Modifier.weight(1f))
         Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-            PrimaryButton(if (isSaving) "Saving…" else "Continue", onClick = ::continueTapped, enabled = !isSaving)
+            PrimaryButton(if (isSaving) "Saving…" else "Continue", onClick = ::continueTapped, enabled = !isSaving && name.isNotBlank())
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun InterestsScreen(onFinish: () -> Unit) {
-    var selected: Map<String, Set<String>> by remember {
-        mutableStateOf(
-            mapOf<String, Set<String>>(
-                "Fitness" to setOf("Yoga"),
-                "Sports" to setOf("Badminton", "Football"),
-                "Creative" to emptySet(),
-                "Learning" to emptySet(),
-                "Outdoor" to setOf("Running"),
-                "Social" to emptySet()
-            )
-        )
+fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
+    var selected: Map<String, Set<String>> by remember { mutableStateOf(DEFAULT_SELECTED_INTERESTS) }
+    var isSaving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val profileRepository = remember { UserProfileRepository() }
+
+    fun finishTapped() {
+        state.interests = selected
+        val uid = Firebase.auth.currentUser?.uid
+        if (uid == null) {
+            onFinish()
+            return
+        }
+        isSaving = true
+        scope.launch {
+            try {
+                profileRepository.saveInterests(uid, selected)
+            } catch (_: Exception) {
+                // Best-effort — interests aren't a blocking step, the user still lands on Home.
+            }
+            onFinish()
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -355,7 +368,7 @@ fun InterestsScreen(onFinish: () -> Unit) {
             Spacer(Modifier.height(20.dp))
         }
         Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-            PrimaryButton("Finish — Go to Home", onClick = onFinish)
+            PrimaryButton(if (isSaving) "Saving…" else "Finish — Go to Home", onClick = ::finishTapped, enabled = !isSaving)
         }
     }
 }
@@ -369,6 +382,18 @@ private fun FieldLabel(text: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp).padding(top = 10.dp)
     )
+}
+
+@Composable
+private fun EditableFieldBox(value: String, onValueChange: (String) -> Unit, placeholder: String) {
+    Box(
+        Modifier.padding(horizontal = 24.dp, vertical = 0.dp).padding(bottom = 16.dp)
+            .fillMaxWidth()
+            .clip(MaxTimeShapes.medium)
+            .background(MaxTimeColors.cardBg)
+            .border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.medium)
+            .padding(horizontal = 14.dp, vertical = 13.dp)
+    ) { MaxTimeTextField(value, onValueChange, placeholder, KeyboardType.Text) }
 }
 
 @Composable
