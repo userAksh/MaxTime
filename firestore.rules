@@ -23,5 +23,135 @@ service cloud.firestore {
     match /groups/{groupId}/messages/{messageId} {
       allow read, write: if request.auth != null;
     }
+
+    // --- MaxTime_PARTNER.docx — Partner/Admin operations --------------------------------------
+    // Authorization is server-side, not UI-hidden (§41): partner identity comes from custom claims
+    // (partnerId/partnerRole) synced by onPartnerUserWrite whenever a partner_users doc changes,
+    // not from a client-supplied field. admin/adminRole claims are bootstrapped out-of-band by
+    // MaxTime Ops via the Admin SDK — no document write can ever grant them.
+    function isAdmin() {
+      return request.auth != null && (request.auth.token.admin == true || request.auth.token.adminRole != null);
+    }
+    function isPartnerOf(partnerId) {
+      return request.auth != null && request.auth.token.partnerId == partnerId;
+    }
+
+    match /partner_leads/{leadId} {
+      // Submitted only via the submitPartnerLead callable (validates required fields server-side).
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /partners/{partnerId} {
+      allow read: if isPartnerOf(partnerId) || isAdmin();
+      // Mutations go through callables so approval/verification/commercial-term changes are
+      // validated and audited, never a bare client write.
+      allow write: if false;
+    }
+
+    match /partner_users/{docId} {
+      allow read: if isAdmin() || (request.auth != null && (resource.data.partnerId == request.auth.token.partnerId || resource.data.userId == request.auth.uid));
+      allow write: if false;
+    }
+
+    match /venues/{venueId} {
+      allow read: if resource.data.published == true || isPartnerOf(resource.data.partnerId) || isAdmin();
+      allow create: if isPartnerOf(request.resource.data.partnerId) || isAdmin();
+      allow update, delete: if isPartnerOf(resource.data.partnerId) || isAdmin();
+    }
+
+    match /resources/{resourceId} {
+      allow read: if isPartnerOf(resource.data.partnerId) || isAdmin();
+      allow create: if isPartnerOf(request.resource.data.partnerId) || isAdmin();
+      allow update, delete: if isPartnerOf(resource.data.partnerId) || isAdmin();
+    }
+
+    match /activities/{activityId} {
+      // §7 screen 5 — "Select/add activities": a partner can propose a new category (as DRAFT)
+      // while onboarding, but only Ops can edit/publish an existing one into the shared catalogue.
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.status == 'DRAFT';
+      allow update, delete: if isAdmin();
+    }
+
+    match /services/{serviceId} {
+      allow read: if resource.data.published == true || isPartnerOf(resource.data.partnerId) || isAdmin();
+      allow create: if isPartnerOf(request.resource.data.partnerId) || isAdmin();
+      allow update, delete: if isPartnerOf(resource.data.partnerId) || isAdmin();
+    }
+
+    match /cancellation_policies/{policyId} {
+      allow read: if isPartnerOf(resource.data.partnerId) || isAdmin();
+      allow create: if isPartnerOf(request.resource.data.partnerId) || isAdmin();
+      allow update, delete: if isPartnerOf(resource.data.partnerId) || isAdmin();
+    }
+
+    match /availability_rules/{ruleId} {
+      allow read: if isPartnerOf(resource.data.partnerId) || isAdmin();
+      allow create: if isPartnerOf(request.resource.data.partnerId) || isAdmin();
+      allow update, delete: if isPartnerOf(resource.data.partnerId) || isAdmin();
+    }
+
+    // Capacity mutations must go through the transactional callables (generateInventoryFromRule,
+    // createBookingHold, blockInventorySlot, expireStaleHolds) — a direct client write here would
+    // defeat the one thing this whole system exists to guarantee: never oversell a slot (§39).
+    match /inventory_slots/{slotId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if request.auth != null && (resource.data.customerUserId == request.auth.uid || isPartnerOf(resource.data.partnerId) || isAdmin());
+      allow write: if false; // createBookingHold / paymentWebhook / markAttendance / admin overrides only
+    }
+
+    match /booking_participants/{participantId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /payments/{paymentId} {
+      allow read: if request.auth != null && (resource.data.customerUserId == request.auth.uid || isAdmin());
+      allow write: if false; // paymentWebhook only
+    }
+
+    match /refunds/{refundId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if request.auth != null;
+      allow write: if false; // markAttendance only
+    }
+
+    match /commission_rules/{ruleId} {
+      allow read: if isPartnerOf(resource.data.partnerId) || isAdmin();
+      allow write: if isAdmin(); // §26 — Admin-only by default
+    }
+
+    match /payouts/{payoutId} {
+      allow read: if isPartnerOf(resource.data.partnerId) || isAdmin();
+      allow write: if false; // calculatePayout / setPayoutHold only
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && resource.data.recipientUserId == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth != null && (resource.data.reporterUserId == request.auth.uid || isAdmin());
+      allow write: if false; // creation/updates go through a callable once built
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /idempotency_keys/{key} {
+      allow read, write: if false; // internal bookkeeping for createBookingHold only
+    }
   }
 }

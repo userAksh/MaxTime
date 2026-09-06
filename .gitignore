@@ -43,5 +43,10 @@ Pods/
 # macOS
 .DS_Store
 
+# Cloud Functions (Node)
+functions/node_modules/
+functions/lib/
+functions/*.log
+
 # Claude Code local session state
 .claude/
