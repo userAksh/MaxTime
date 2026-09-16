@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:staging": "env $(grep -v '^#' .env.staging | xargs) next build",
     "start": "next start",
     "lint": "eslint"
   },

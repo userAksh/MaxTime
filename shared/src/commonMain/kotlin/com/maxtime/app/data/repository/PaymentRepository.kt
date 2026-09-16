@@ -12,7 +12,6 @@ interface PaymentRepository {
     val payments: MutableMap<String, Payment>
 
     fun charge(bookingId: String, amount: Int, idempotencyKey: String): Payment
-    fun recordFailure(bookingId: String, amount: Int, idempotencyKey: String): Payment
 }
 
 class MockPaymentRepository : PaymentRepository {
@@ -28,18 +27,6 @@ class MockPaymentRepository : PaymentRepository {
             amount = amount,
             idempotencyKey = idempotencyKey,
             state = PaymentState.SUCCEEDED
-        )
-        payments[idempotencyKey] = payment
-        return payment
-    }
-
-    override fun recordFailure(bookingId: String, amount: Int, idempotencyKey: String): Payment {
-        val payment = Payment(
-            id = "pay-$idempotencyKey",
-            bookingId = bookingId,
-            amount = amount,
-            idempotencyKey = idempotencyKey,
-            state = PaymentState.FAILED
         )
         payments[idempotencyKey] = payment
         return payment

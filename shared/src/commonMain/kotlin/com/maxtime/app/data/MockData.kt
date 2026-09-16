@@ -35,26 +35,26 @@ val DEFAULT_SELECTED_INTERESTS: Map<String, Set<String>> = mapOf(
 
 /** Keyed by activity name. Anything not present falls back to a generic-but-consistent entry. */
 val ACTIVITY_DB: Map<String, ActivityInfo> = mapOf(
-    "Badminton" to ActivityInfo("🏸", "Sports", "A fast-paced racket sport, usually played in doubles. Great for cardio and quick reflexes.", listOf(Venue("Sector 29 Sports Complex", 2.1), Venue("DLF Phase 3 Courts", 6.4)), "Intermediate", 250),
-    "Football" to ActivityInfo("⚽", "Sports", "A group sport that needs a full squad to be worth playing.", listOf(Venue("Sector 29 Turf", 2.4), Venue("Green Park Ground", 8.1)), "Casual", 150),
-    "Cricket" to ActivityInfo("🏏", "Sports", "Casual box-cricket sessions with a rotating squad.", listOf(Venue("Ambience Turf Arena", 4.8)), "Casual", 200),
-    "Tennis" to ActivityInfo("🎾", "Sports", "Singles and doubles on hard courts.", listOf(Venue("DLF Tennis Academy", 6.9)), "Intermediate", 400),
-    "Swimming" to ActivityInfo("🏊", "Fitness", "Lap swimming and technique sessions in a supervised pool.", listOf(Venue("Aqua Sports Club", 1.6), Venue("DLF Swim Academy", 7.2)), "Beginner-friendly", 300),
-    "Pilates" to ActivityInfo("🧘", "Fitness", "A low-impact strength and flexibility class.", listOf(Venue("Studio Flow", 1.2), Venue("Core Collective", 4.5)), "All levels", 450),
-    "Yoga" to ActivityInfo("🧘", "Fitness", "A grounding, breath-led practice suitable for every level.", listOf(Venue("Studio Flow", 1.2)), "All levels", 350),
-    "Gym" to ActivityInfo("🏋", "Fitness", "A shared strength-training session with a spotter.", listOf(Venue("Iron Works Gym", 2.9)), "All levels", 200),
-    "Boxing" to ActivityInfo("🥊", "Fitness", "Pad work and conditioning in a small group format.", listOf(Venue("Ring Side Boxing Club", 9.3)), "Beginner-friendly", 500),
-    "Pottery" to ActivityInfo("🏺", "Creative", "A hands-on wheel-throwing and hand-building session.", listOf(Venue("Clay & Co Studio", 3.5), Venue("Studio Terracotta", 5.9)), "No experience needed", 600),
-    "Painting" to ActivityInfo("🎨", "Creative", "A guided acrylic painting session, materials included.", listOf(Venue("The Art Room", 4.1)), "No experience needed", 550),
-    "Photography" to ActivityInfo("📷", "Creative", "A walking shoot session with a small group.", listOf(Venue("Meet at Hauz Khas Village", 3.0)), "Bring your own camera", 400),
-    "Music" to ActivityInfo("🎸", "Creative", "An informal jam session, all instruments welcome.", listOf(Venue("Soundcheck Studio", 2.8)), "Any level", 300),
-    "Cooking" to ActivityInfo("🍳", "Learning", "A hands-on cooking class making a full meal together.", listOf(Venue("The Kitchen Lab", 3.3), Venue("Spice Studio", 5.0)), "Beginner-friendly", 900),
-    "Workshops" to ActivityInfo("🛠", "Learning", "A small-group hands-on workshop.", listOf(Venue("The Study Room", 4.4)), "All levels", 500),
-    "Running" to ActivityInfo("🏃", "Outdoor", "A community run at an easy, conversational pace.", listOf(Venue("Lodhi Garden Meet Point", 1.9), Venue("Deer Park Loop", 2.3)), "5–8 km pace", 0),
-    "Cycling" to ActivityInfo("🚴", "Outdoor", "A social group ride, regroup stops included.", listOf(Venue("Meet at Nehru Park", 5.6)), "20–30 km ride", 0),
-    "Trekking" to ActivityInfo("⛰", "Outdoor", "A day trek with a small group, transport arranged separately.", listOf(Venue("Meet at Aravalli Trailhead", 14.2)), "Moderate fitness", 0),
-    "Dinner" to ActivityInfo("🍽", "Social", "A casual group dinner meetup, split the bill.", listOf(Venue("Third Wave Kitchen", 2.7)), "Just show up", 0),
-    "Board Games" to ActivityInfo("🎲", "Social", "A relaxed evening of strategy and party games.", listOf(Venue("The Game Café", 1.4), Venue("Board & Brew", 3.9)), "Casual", 200)
+    "Badminton" to ActivityInfo("🏸", "Sports", "A fast-paced racket sport, usually played in doubles. Great for cardio and quick reflexes.", "Intermediate", 250),
+    "Football" to ActivityInfo("⚽", "Sports", "A group sport that needs a full squad to be worth playing.", "Casual", 150),
+    "Cricket" to ActivityInfo("🏏", "Sports", "Casual box-cricket sessions with a rotating squad.", "Casual", 200),
+    "Tennis" to ActivityInfo("🎾", "Sports", "Singles and doubles on hard courts.", "Intermediate", 400),
+    "Swimming" to ActivityInfo("🏊", "Fitness", "Lap swimming and technique sessions in a supervised pool.", "Beginner-friendly", 300),
+    "Pilates" to ActivityInfo("🧘", "Fitness", "A low-impact strength and flexibility class.", "All levels", 450),
+    "Yoga" to ActivityInfo("🧘", "Fitness", "A grounding, breath-led practice suitable for every level.", "All levels", 350),
+    "Gym" to ActivityInfo("🏋", "Fitness", "A shared strength-training session with a spotter.", "All levels", 200),
+    "Boxing" to ActivityInfo("🥊", "Fitness", "Pad work and conditioning in a small group format.", "Beginner-friendly", 500),
+    "Pottery" to ActivityInfo("🏺", "Creative", "A hands-on wheel-throwing and hand-building session.", "No experience needed", 600),
+    "Painting" to ActivityInfo("🎨", "Creative", "A guided acrylic painting session, materials included.", "No experience needed", 550),
+    "Photography" to ActivityInfo("📷", "Creative", "A walking shoot session with a small group.", "Bring your own camera", 400),
+    "Music" to ActivityInfo("🎸", "Creative", "An informal jam session, all instruments welcome.", "Any level", 300),
+    "Cooking" to ActivityInfo("🍳", "Learning", "A hands-on cooking class making a full meal together.", "Beginner-friendly", 900),
+    "Workshops" to ActivityInfo("🛠", "Learning", "A small-group hands-on workshop.", "All levels", 500),
+    "Running" to ActivityInfo("🏃", "Outdoor", "A community run at an easy, conversational pace.", "5–8 km pace", 0),
+    "Cycling" to ActivityInfo("🚴", "Outdoor", "A social group ride, regroup stops included.", "20–30 km ride", 0),
+    "Trekking" to ActivityInfo("⛰", "Outdoor", "A day trek with a small group, transport arranged separately.", "Moderate fitness", 0),
+    "Dinner" to ActivityInfo("🍽", "Social", "A casual group dinner meetup, split the bill.", "Just show up", 0),
+    "Board Games" to ActivityInfo("🎲", "Social", "A relaxed evening of strategy and party games.", "Casual", 200)
 )
 
 fun getActivityInfo(name: String, areaFallback: String): ActivityInfo {
@@ -64,7 +64,6 @@ fun getActivityInfo(name: String, areaFallback: String): ActivityInfo {
         icon = "✨",
         category = "Activity",
         description = "A ${name.lowercase()} session with people nearby.",
-        venues = listOf(Venue("$name Studio, $area", 3.2)),
         skillLabel = "All levels",
         price = 300
     )

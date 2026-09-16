@@ -41,6 +41,11 @@ interface GroupRepository {
      *  A no-op for a purely in-memory implementation — there's nothing to restore from. */
     suspend fun loadMyGroups(myName: String)
 
+    /** ALL groups for [activity], regardless of who created or joined them — unlike [loadMyGroups],
+     *  which only ever returns the caller's own. Used to check real "is anyone actually doing this"
+     *  signals rather than fabricating them. */
+    suspend fun groupsForActivity(activity: String): List<Group>
+
     /** Persists a group's current state after AppState mutates fields the repository itself
      *  didn't touch (payment, booking, venue resolution, deadline-driven status changes) — a
      *  no-op for a purely in-memory implementation, since the object is already live in [groups]. */
@@ -101,6 +106,7 @@ class MockGroupRepository : GroupRepository {
             priceIfDeadlineMissed = priceIfDeadlineMissed,
             icon = info.icon
         )
+        g.sessionDate = session.date
         g.eventWeekdayIndex = weekdayIndexOf(session.date)
         g.eventStartMinutes = parseClockTimeToMinutes(session.startTime)
         g.memberList.add(GroupMember("Ayesha", GroupMemberRole.CREATOR, "Just now"))
@@ -128,6 +134,9 @@ class MockGroupRepository : GroupRepository {
     override suspend fun loadMyGroups(myName: String) {
         // Nothing to restore — this implementation never survives process death anyway.
     }
+
+    override suspend fun groupsForActivity(activity: String): List<Group> =
+        groups.values.filter { it.activity == activity }.toList()
 
     override fun save(group: Group) {
         // Already live in `groups` the moment it's mutated — nothing further to do.

@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.Group
 import com.maxtime.app.data.Session
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomNav
@@ -97,24 +98,25 @@ fun HomeScreen(state: AppState, router: Router) {
             }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp),
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.Bottom
             ) {
-                Text("Already know what you want? ", style = MaxTimeType.caption)
+                Text("Already know what you want? ", style = MaxTimeType.caption, modifier = Modifier.alignByBaseline())
                 Text(
                     "Book solo",
                     color = MaxTimeColors.accent2, fontSize = 11.5.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable {
+                    modifier = Modifier.alignByBaseline().clickable {
                         scope.launch {
                             state.selectSession()
                             router.navigate(Screen.SessionDetail)
                         }
                     }
                 )
-                Text(" · ", style = MaxTimeType.caption)
+                Text(" · ", style = MaxTimeType.caption, modifier = Modifier.alignByBaseline())
                 Text(
                     "Start an activity",
                     color = MaxTimeColors.accent2, fontSize = 11.5.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { router.navigate(Screen.CreateGroup) }
+                    modifier = Modifier.alignByBaseline().clickable { router.navigate(Screen.CreateGroup) }
                 )
             }
 
@@ -135,41 +137,40 @@ fun HomeScreen(state: AppState, router: Router) {
                 }
             }
 
-            var recommended by remember { mutableStateOf<Pair<String, Session>?>(null) }
+            var recommendedGroup by remember { mutableStateOf<Group?>(null) }
             var nearby by remember { mutableStateOf<Pair<String, Session>?>(null) }
             var sessionsLoading by remember { mutableStateOf(true) }
             LaunchedEffect(state.intent.activity, state.location) {
                 sessionsLoading = true
-                recommended = state.recommendedGroup()
-                nearby = state.nearbySession(recommended?.first)
+                recommendedGroup = state.recommendedRealGroup()
+                nearby = state.nearbySession(recommendedGroup?.activity)
                 sessionsLoading = false
             }
 
             SectionLabel("People & groups doing this", actionText = "See all", onAction = { router.navigate(Screen.FindWhat) })
-            val recommendedValue = recommended
+            val groupValue = recommendedGroup
             if (sessionsLoading) {
                 ShimmerCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp))
-            } else if (recommendedValue != null) {
-                val (activity, session) = recommendedValue
+            } else if (groupValue != null) {
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     onClick = {
-                        state.intent = state.intent.copy(activity = activity)
-                        router.navigate(Screen.FindResults)
+                        state.selectedGroup = groupValue
+                        router.navigate(Screen.GroupDetail)
                     }
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                            Text("3 going · 1 spot open", color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             Text(
-                                "$activity · ${session.date}, ${session.startTime} · ${session.venueName}, ${session.distanceKm} km",
-                                style = MaxTimeType.caption
+                                "${groupValue.members} going · ${groupValue.openSlots} spot${if (groupValue.openSlots == 1) "" else "s"} open",
+                                color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp
                             )
+                            Text("${groupValue.activity} · ${groupValue.whenLabel} · ${groupValue.venueLine}", style = MaxTimeType.caption)
                         }
-                        StatusChip("Filling", com.maxtime.app.data.StatusChipVariant.FILLING)
+                        StatusChip(groupValue.statusLabel, groupValue.statusVariant)
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        AvatarStack(listOf("A", "B", "C"))
+                        AvatarStack(groupValue.memberList.map { it.personName }.ifEmpty { listOf(groupValue.creator) })
                         Box(Modifier.clip(RoundedCornerShape(9.dp)).background(MaxTimeColors.accent).padding(horizontal = 14.dp, vertical = 7.dp)) {
                             Text("See details", color = MaxTimeColors.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
@@ -177,7 +178,7 @@ fun HomeScreen(state: AppState, router: Router) {
                 }
             } else {
                 Text(
-                    "Nothing nearby yet — try expanding your radius.",
+                    "No groups started for these activities yet — be the first.",
                     style = MaxTimeType.caption,
                     modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding)
                 )
@@ -202,7 +203,7 @@ fun HomeScreen(state: AppState, router: Router) {
                 ) {
                     Text("$activity · ${session.date}, ${session.startTime}", color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     Text(
-                        "${session.venueName}, ${session.distanceKm} km away · ${session.spotsLeft} spots left",
+                        "${session.venueName}, ${state.location.kmAwayLabel(session.distanceKm)} · ${session.spotsLeft} spots left",
                         style = MaxTimeType.caption,
                         modifier = Modifier.padding(top = 4.dp)
                     )

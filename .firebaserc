@@ -1,5 +1,31 @@
 {
   "projects": {
-    "default": "maxtime-app"
-  }
+    "default": "maxtime-app",
+    "production": "maxtime-app",
+    "staging": "maxtime-staging",
+    "beta": "maxtime-beta"
+  },
+  "targets": {
+    "maxtime-app": {
+      "hosting": {
+        "admin-portal": [
+          "maxtime-admin"
+        ],
+        "partner-portal": [
+          "maxtime-partner"
+        ]
+      }
+    },
+    "maxtime-staging": {
+      "hosting": {
+        "partner-portal-staging": [
+          "maxtime-partner-staging"
+        ],
+        "admin-portal-staging": [
+          "maxtime-admin-staging"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

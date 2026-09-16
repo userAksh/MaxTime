@@ -15,9 +15,11 @@ data class User(
 
 /** Canonical location — the ONE source of truth. Nothing else duplicates "current location".
  *  [latitude]/[longitude] are only populated when [area] came from a real GPS fix or map pick
- *  (see `LocationPopup`) — manual text entry leaves them null. Nothing in this app's mocked
- *  session/distance logic reads them yet, but real device coordinates are worth keeping once
- *  we have them rather than throwing them away down to just a label. */
+ *  (see `LocationPopup`) — manual text entry (including the default "Saket, South Delhi" area
+ *  the app starts with) leaves them null. [SessionRepository.realSessionsFor] can only compute a
+ *  real per-venue distance when these are set — without them every session's `distanceKm` is a
+ *  placeholder 0.0, which [kmAwayLabel]/[kmLabel] below know to render honestly rather than as a
+ *  literal (and misleading) "0.0 km away". */
 data class UserLocation(
     val area: String,
     val radiusKm: Int,
@@ -25,6 +27,10 @@ data class UserLocation(
     val longitude: Double? = null
 ) {
     val radiusLabel: String get() = "$radiusKm km"
+    val hasCoordinates: Boolean get() = latitude != null && longitude != null
+
+    fun kmAwayLabel(distanceKm: Double): String = if (hasCoordinates) "$distanceKm km away" else "distance unknown"
+    fun kmLabel(distanceKm: Double): String = if (hasCoordinates) "$distanceKm km" else "distance unknown"
 }
 
 /** What the user is currently searching for. Ephemeral, not persisted long-term. */
@@ -36,31 +42,8 @@ data class ActivityIntent(
     val durationMinutes: Int = 60
 )
 
-data class Venue(
-    val name: String,
-    val distanceKm: Double
-)
-
-/**
- * A facility's real open-hours window for one activity on one date — e.g. a badminton court
- * open 7:00–10:00 PM. Unlike [Session] (a fixed single class/occurrence with its own start time
- * and headcount), this is a RANGE: what counts as a bookable slot inside it depends on how long
- * the booking needs to be, computed by [computeAvailableSlots] rather than stored directly.
- */
-data class VenueAvailability(
-    val id: String,
-    val activity: String,
-    val venueName: String,
-    val distanceKm: Double,
-    val date: String,
-    val opensAt: String,
-    val closesAt: String,
-    val price: Int,
-    val capacity: Int
-)
-
-/** One concrete, real (start, end) pair that actually fits inside a venue's open hours for a
- *  requested duration — the only kind of slot a picker should ever offer as selectable. */
+/** One concrete, real (start, end) pair for a specific real Session — matched against what the
+ *  user asked for (day/duration) in [AppState.availableSlotsFor], never synthesized. */
 data class TimeSlotOption(
     val venueName: String,
     val distanceKm: Double,
@@ -88,7 +71,11 @@ data class Session(
     val spotsLeft: Int,
     val cancellationPolicy: String = "Free cancellation up to 2 hours before start."
 ) {
-    val whenLabel: String get() = "$date, $startTime"
+    // formatSessionDate/formatSessionTime handle both the mock vocabulary's bare weekday
+    // abbreviation + 12h time and real InventorySlot-derived ISO date + 24h time — without this,
+    // every screen that displays whenLabel (SessionDetail, BookingReview, GroupChat/Detail, Home,
+    // Plans) would show a real session's raw "2026-09-12, 07:00" instead of "Today, 7:00 AM".
+    val whenLabel: String get() = "${formatSessionDate(date)}, ${formatSessionTime(startTime)}"
 }
 
 enum class GroupStatus { FILLING, FULL, DEADLINE_MISSED, CANCELLED }
@@ -117,6 +104,7 @@ class Group(
     val where: String,
     venue: String? = null,
     sessionId: String? = null,
+    sessionDate: String? = null,
     val needed: Int,
     val capacity: Int,
     val creator: String,
@@ -127,6 +115,11 @@ class Group(
     var whenLabel by mutableStateOf(whenLabel)
     var venue by mutableStateOf(venue)
     var sessionId by mutableStateOf(sessionId)
+    /** The resolved session's raw `date` (kept format-agnostic — bare weekday abbreviation for
+     *  mock Sessions, ISO yyyy-MM-dd for real ones) — lets "another group the same day, different
+     *  time" be found by exact string match without needing to reverse [eventWeekdayIndex] back
+     *  into a specific calendar date. */
+    var sessionDate by mutableStateOf(sessionDate)
     /** Set once a real venue+time is confirmed (see AppState.resolveSessionForGroup/confirmVenueSlot)
      *  — the only source of truth [deadline]/[isPastFillDeadline] compute from, never a stored
      *  string that could drift out of sync with the actual confirmed time. */
@@ -221,7 +214,6 @@ data class ActivityInfo(
     val icon: String,
     val category: String,
     val description: String,
-    val venues: List<Venue>,
     val skillLabel: String,
     val price: Int
 )

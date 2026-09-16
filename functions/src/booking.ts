@@ -61,19 +61,29 @@ export const createBookingHold = onCall(async (request) => {
     if (slot.status !== "AVAILABLE") {
       throw new HttpsError("failed-precondition", "This slot is no longer available.");
     }
-    if (slot.remaining < participantCount) {
-      throw new HttpsError("resource-exhausted", "Not enough spots left in this slot.");
-    }
 
     const serviceSnap = await tx.get(db.collection("services").doc(slot.serviceId));
     const service = serviceSnap.data() as Service | undefined;
+    // A court is an exclusive resource for that slot — whoever books it first gets the whole
+    // thing regardless of headcount (1 unit), unlike a class/group session where independent
+    // customers genuinely share the same slot up to its headcount capacity.
+    const isExclusiveCourt = service?.format === "COURT_BOOKING";
+    const unitsNeeded = isExclusiveCourt ? 1 : participantCount;
+
+    if (slot.remaining < unitsNeeded) {
+      throw new HttpsError(
+        "resource-exhausted",
+        isExclusiveCourt ? "This slot is already booked." : "Not enough spots left in this slot."
+      );
+    }
+
     const amount = computeAmount(service, slot.price, participantCount);
 
     const bookingRef = db.collection("bookings").doc();
     const holdExpiresAt = Timestamp.fromMillis(Date.now() + HOLD_MINUTES * 60_000);
 
     tx.update(slotRef, {
-      remaining: slot.remaining - participantCount,
+      remaining: slot.remaining - unitsNeeded,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -84,6 +94,7 @@ export const createBookingHold = onCall(async (request) => {
       venueId: slot.venueId,
       customerUserId,
       participantCount,
+      slotUnitsHeld: unitsNeeded,
       status: "PENDING_PAYMENT",
       amount,
       currency: "INR",
@@ -140,7 +151,7 @@ export const expireStaleHolds = onSchedule("every 5 minutes", async () => {
       if (slotSnap.exists) {
         const slot = slotSnap.data() as InventorySlot;
         tx.update(slotRef, {
-          remaining: slot.remaining + booking.participantCount,
+          remaining: slot.remaining + booking.slotUnitsHeld,
           updatedAt: FieldValue.serverTimestamp(),
         });
       }

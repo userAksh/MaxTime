@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "513938349085",
+    "project_id": "maxtime-staging",
+    "storage_bucket": "maxtime-staging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:513938349085:android:a4fb4941514a738ab17af4",
+        "android_client_info": {
+          "package_name": "com.maxtime.android.staging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBErAsx2pKbokVi9y1T7xvYxL_UUg-Wh4U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

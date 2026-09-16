@@ -9,7 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import com.maxtime.app.data.AppPrefsKeys
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.LocalSettings
 import com.maxtime.app.data.firebase.UserProfileRepository
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
@@ -28,16 +30,49 @@ import com.maxtime.app.ui.theme.MaxTimeTheme
 @Composable
 fun MaxTimeApp() {
     val state = remember { AppState() }
-    // A prior session (Firebase Auth caches it natively) means this person already finished
-    // onboarding — land them back on Home instead of walking Splash -> AgeGate -> Auth -> ...
-    // again. `currentUser` reads Firebase's own restored-on-launch session synchronously, no
-    // extra async gating/loading state needed here.
-    val router = remember { Router(if (Firebase.auth.currentUser != null) Screen.Home else Screen.Splash) }
+
+    // iOS Keychain — unlike NSUserDefaults/SharedPreferences — survives a full app delete, so
+    // Firebase Auth's session can still be sitting there on what the user reasonably expects to
+    // be a fresh install. hasLaunchedBefore lives in storage an uninstall actually clears, so its
+    // absence really does mean "this install has never launched before" — if a Firebase session
+    // exists anyway, it's stale and must be signed out, or deleting the app to log out would
+    // silently log the person back in on reinstall instead.
+    val hasStaleSession = remember {
+        !LocalSettings.getBoolean(AppPrefsKeys.HAS_LAUNCHED_BEFORE, false) && Firebase.auth.currentUser != null
+    }
+
+    // Being signed in (currentUser != null) is NOT the same as having finished onboarding — Auth
+    // is well before Profile/Interests in the flow, and ONBOARDING_COMPLETE is only ever set once
+    // InterestsScreen's final step actually runs. Someone signed in but not yet complete resumes
+    // at Profile (the first screen after Auth) rather than being sent back through AgeGate/Auth,
+    // which they've already done, or bounced straight to Home past steps they never filled in.
+    val onboardingComplete = remember {
+        Firebase.auth.currentUser?.uid?.let { LocalSettings.getBoolean(AppPrefsKeys.onboardingCompleteKey(it), false) } ?: false
+    }
+
+    // A prior session (Firebase Auth caches it natively) means this person already signed in —
+    // `currentUser` reads Firebase's own restored-on-launch session synchronously, no extra async
+    // gating/loading state needed here. A stale session (above) is never treated as "returning"
+    // even though currentUser is momentarily non-null.
+    val router = remember {
+        Router(
+            when {
+                Firebase.auth.currentUser == null || hasStaleSession -> Screen.Splash
+                !onboardingComplete -> Screen.Profile
+                else -> Screen.Home
+            }
+        )
+    }
 
     // A returning user whose Firebase session was restored skips straight to Home (above) —
     // but their name/interests, saved to Firestore during onboarding, still need to be pulled
     // back into this fresh AppState so Home doesn't show the hardcoded default name forever.
     LaunchedEffect(Unit) {
+        LocalSettings.putBoolean(AppPrefsKeys.HAS_LAUNCHED_BEFORE, true)
+        if (hasStaleSession) {
+            Firebase.auth.signOut()
+            return@LaunchedEffect
+        }
         val uid = Firebase.auth.currentUser?.uid
         if (uid != null) {
             val profile = UserProfileRepository().loadProfile(uid)
@@ -49,10 +84,13 @@ fun MaxTimeApp() {
                     state.interests = profile.interests.mapValues { it.value.toSet() }
                 }
             }
+            // Restores whatever groups this name created/joined last session — after the real
+            // name (if any) is in place, so it matches what those groups were actually saved
+            // under. Only for an already-authenticated returning user: Firestore's security
+            // rules require request.auth != null, and a brand-new user on Splash has no session
+            // yet, so this would otherwise fire an unauthenticated query and crash.
+            state.loadPersistedGroups()
         }
-        // Restores whatever groups this name created/joined last session — after the real name
-        // (if any) is in place, so it matches what those groups were actually saved under.
-        state.loadPersistedGroups()
     }
 
     MaxTimeTheme {

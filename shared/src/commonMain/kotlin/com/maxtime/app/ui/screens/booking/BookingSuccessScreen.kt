@@ -34,7 +34,7 @@ fun BookingSuccessScreen(state: AppState, router: Router) {
     val group = state.selectedGroup
     val session = state.selectedSession
     val activity = group?.activity ?: session?.activity ?: state.intent.activity
-    val venue = group?.venue ?: session?.venueName ?: state.activityInfo().venues.firstOrNull()?.name.orEmpty()
+    val venue = group?.venue ?: session?.venueName ?: "Venue to be confirmed"
     val whenLabel = group?.whenLabel ?: session?.whenLabel ?: state.intent.whenLabel
     val icon = state.activityInfo(activity).icon
     val code = remember { "MXT-${randomCode()}-${randomCode()}" }

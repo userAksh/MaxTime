@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { collection, getCountFromServer, query, where } from "firebase/firestore";
+import { collection, getCountFromServer, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { AdminGate } from "@/components/AdminGate";
 
@@ -20,15 +20,20 @@ function DashboardContent() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [live, pending, held] = await Promise.all([
+      // "Pending approvals" can't be a plain count: createPartnerAccount creates the partner doc
+      // (PENDING_VERIFICATION) at onboarding step 0, well before the venue/service steps and the
+      // final "Submit for review" — so a raw status count includes abandoned/in-progress signups
+      // with nothing to actually review yet. submittedAt is what actually means "submitted" (same
+      // fix as the Partners list, §29) — filtered here so the two numbers agree with each other.
+      const [live, pendingPartners, held] = await Promise.all([
         getCountFromServer(query(collection(db, "partners"), where("status", "==", "APPROVED"))),
-        getCountFromServer(query(collection(db, "partners"), where("status", "==", "PENDING_VERIFICATION"))),
+        getDocs(query(collection(db, "partners"), where("status", "==", "PENDING_VERIFICATION"))),
         getCountFromServer(query(collection(db, "payouts"), where("status", "==", "ON_HOLD"))),
       ]);
       if (cancelled) return;
       setCounts({
         livePartners: live.data().count,
-        pendingApprovals: pending.data().count,
+        pendingApprovals: pendingPartners.docs.filter((d) => !!d.data().submittedAt).length,
         payoutsOnHold: held.data().count,
       });
     }

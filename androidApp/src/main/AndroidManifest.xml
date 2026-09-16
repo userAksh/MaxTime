@@ -7,7 +7,7 @@
         android:name=".MaxTimeApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="MaxTime"
+        android:label="@string/app_name"
         android:theme="@style/Theme.MaxTime">
         <!-- Populated from local.properties (MAPS_API_KEY) at build time — see androidApp/build.gradle.kts.
              Never commit a real key here; the map picker just won't render tiles until one is set. -->
@@ -17,7 +17,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden">
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

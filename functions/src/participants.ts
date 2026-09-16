@@ -52,16 +52,24 @@ export const addParticipant = onCall(async (request) => {
     const slotSnap = await tx.get(slotRef);
     if (!slotSnap.exists) throw new HttpsError("not-found", "Slot not found.");
     const slot = slotSnap.data() as InventorySlot;
-    if (slot.remaining < 1) {
-      throw new HttpsError("resource-exhausted", "No spots left in this slot.");
-    }
 
     const serviceSnap = await tx.get(db.collection("services").doc(booking.serviceId));
     const service = serviceSnap.data() as Service | undefined;
+    // An exclusive court slot is already fully held by this booking (slotUnitsHeld=1 regardless
+    // of headcount) — adding another player doesn't need another unit from a pool that was never
+    // shared to begin with, unlike a class/group session where each extra person really does need
+    // its own spot out of the slot's shared capacity.
+    const isExclusiveCourt = service?.format === "COURT_BOOKING";
+    if (!isExclusiveCourt && slot.remaining < 1) {
+      throw new HttpsError("resource-exhausted", "No spots left in this slot.");
+    }
+
     const newParticipantCount = booking.participantCount + 1;
     const newAmount = recomputeAmount(service, slot.price, newParticipantCount);
 
-    tx.update(slotRef, { remaining: slot.remaining - 1, updatedAt: FieldValue.serverTimestamp() });
+    if (!isExclusiveCourt) {
+      tx.update(slotRef, { remaining: slot.remaining - 1, updatedAt: FieldValue.serverTimestamp() });
+    }
     tx.update(bookingRef, {
       participantCount: newParticipantCount,
       amount: newAmount,
@@ -149,7 +157,10 @@ export const removeParticipant = onCall(async (request) => {
     const newParticipantCount = booking.participantCount - 1;
     const newAmount = recomputeAmount(service, slotSnap.exists ? (slotSnap.data() as InventorySlot).price : 0, newParticipantCount);
 
-    if (slotSnap.exists) {
+    // Symmetric to addParticipant: an exclusive court slot's single held unit never changed when
+    // headcount changed, so removing a player doesn't release anything back to a pool either.
+    const isExclusiveCourt = service?.format === "COURT_BOOKING";
+    if (!isExclusiveCourt && slotSnap.exists) {
       const slot = slotSnap.data() as InventorySlot;
       tx.update(slotRef, { remaining: slot.remaining + 1, updatedAt: FieldValue.serverTimestamp() });
     }

@@ -10,6 +10,7 @@ import com.maxtime.app.ui.screens.discovery.ActivityDetailScreen
 import com.maxtime.app.ui.screens.discovery.MatchRequestScreen
 import com.maxtime.app.ui.screens.discovery.PersonDetailScreen
 import com.maxtime.app.ui.screens.discovery.SessionDetailScreen
+import com.maxtime.app.ui.screens.discovery.VenueSessionsScreen
 import com.maxtime.app.ui.screens.groups.CreateGroupScreen
 import com.maxtime.app.ui.screens.groups.GroupChatScreen
 import com.maxtime.app.ui.screens.groups.GroupDetailScreen
@@ -43,6 +44,7 @@ fun RootScreenHost(state: AppState, router: Router) {
             Screen.FindWhere -> FindWhereScreen(state, router)
             Screen.FindResults -> FindResultsScreen(state, router)
             Screen.ActivityDetail -> ActivityDetailScreen(state, router)
+            Screen.VenueSessions -> VenueSessionsScreen(state, router)
             Screen.SessionDetail -> SessionDetailScreen(state, router)
             Screen.PersonDetail -> PersonDetailScreen(state, router)
             Screen.MatchRequest -> MatchRequestScreen(state, router)

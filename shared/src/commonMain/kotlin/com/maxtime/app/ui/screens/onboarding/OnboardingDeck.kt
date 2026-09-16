@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -51,6 +53,29 @@ fun OnboardingDeck(
     val next2Key = if (idx != -1 && idx + 2 < onboardingOrder.size) onboardingOrder[idx + 2] else null
     val hasPeek = idx < onboardingOrder.lastIndex
     val hasPeek2 = next2Key != null
+    // Auth is the one step where "swipe forward" would skip something real instead of just an
+    // optional field — Profile/Interests already fall back to sane defaults if left blank, but
+    // there's no valid way to "fill in" a successful phone/OTP verification by swiping past it.
+    val canSwipeForward = router.current != Screen.Auth
+
+    val density = LocalDensity.current
+    val animX = remember { Animatable(0f) }
+    // Tracks the deck index this card has actually finished animating to. The drag gesture keeps
+    // this in lockstep with the router itself (see onAdvance/onBack below); a screen's own button
+    // calling router.navigate()/goBack() directly does not, so the effect below is what notices
+    // the mismatch and plays the same slide transition the drag gesture uses — forward/back looks
+    // identical regardless of whether the user swiped or tapped a button.
+    var renderedIdx by remember { mutableStateOf(idx) }
+
+    LaunchedEffect(idx) {
+        if (idx != renderedIdx && idx != -1) {
+            val forward = idx > renderedIdx
+            renderedIdx = idx
+            val startPx = with(density) { if (forward) 900.dp.toPx() else (-900).dp.toPx() }
+            animX.snapTo(startPx)
+            animX.animateTo(0f, tween(220))
+        }
+    }
 
     Box(Modifier.fillMaxSize().padding(34.dp)) {
         if (hasPeek2) {
@@ -64,9 +89,17 @@ fun OnboardingDeck(
             }
         }
         DraggableFrontCard(
+            animX = animX,
             canGoBack = router.canGoBack,
-            onAdvance = { router.navigate(nextKey) },
-            onBack = { router.goBack() }
+            canAdvance = canSwipeForward,
+            onAdvance = {
+                renderedIdx = idx + 1
+                router.navigate(nextKey)
+            },
+            onBack = {
+                renderedIdx = idx - 1
+                router.goBack()
+            }
         ) {
             screenContent(router.current)
         }
@@ -100,22 +133,23 @@ private fun PeekCard(
 
 @Composable
 private fun DraggableFrontCard(
+    animX: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
     canGoBack: Boolean,
+    canAdvance: Boolean,
     onAdvance: () -> Unit,
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
     val thresholdPx = with(density) { 90.dp.toPx() }
-    val animX = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    var badgeRightAlpha by remember { androidx.compose.runtime.mutableStateOf(0f) }
-    var badgeLeftAlpha by remember { androidx.compose.runtime.mutableStateOf(0f) }
+    var badgeRightAlpha by remember { mutableStateOf(0f) }
+    var badgeLeftAlpha by remember { mutableStateOf(0f) }
 
     val dragState = rememberDraggableState { delta ->
         scope.launch { animX.snapTo(animX.value + delta) }
         val progress = (animX.value / (thresholdPx * 1.6f)).coerceIn(-1f, 1f)
-        badgeRightAlpha = progress.coerceAtLeast(0f)
+        badgeRightAlpha = if (canAdvance) progress.coerceAtLeast(0f) else 0f
         badgeLeftAlpha = if (canGoBack) (-progress).coerceAtLeast(0f) else 0f
     }
 
@@ -128,7 +162,7 @@ private fun DraggableFrontCard(
                 onDragStopped = {
                     val dx = animX.value
                     when {
-                        dx > thresholdPx -> {
+                        dx > thresholdPx && canAdvance -> {
                             animX.animateTo(with(density) { 900.dp.toPx() }, tween(180))
                             onAdvance()
                             animX.snapTo(0f)

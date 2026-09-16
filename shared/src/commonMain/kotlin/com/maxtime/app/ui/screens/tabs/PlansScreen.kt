@@ -6,15 +6,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.BookingStatus
+import com.maxtime.app.data.firebase.MyBooking
 import com.maxtime.app.ui.components.BottomNav
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.ScreenScaffold
+import com.maxtime.app.ui.components.SectionLabel
 import com.maxtime.app.ui.components.StatusChip
 import com.maxtime.app.ui.nav.Router
 import com.maxtime.app.ui.nav.Screen
@@ -22,10 +27,14 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
 
-/** Your schedule — the same groups as the Groups tab, viewed date/booking-first instead of
- *  people-first. Your personal record: upcoming, pending, and past. */
+/** Your schedule. Two distinct sources, shown as separate sections: real, Firestore-backed
+ *  Bookings (what you've actually paid for — including solo bookings, which never touch the
+ *  Group system) and the existing mock/local Groups ("start an activity"/"join a group"). */
 @Composable
 fun PlansScreen(state: AppState, router: Router) {
+    val bookingsFlow = remember { state.observeMyBookings() }
+    val bookings by bookingsFlow.collectAsState(initial = emptyList<MyBooking>())
+
     ScreenScaffold(
         topBar = {
             Text("Plans", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
@@ -37,15 +46,40 @@ fun PlansScreen(state: AppState, router: Router) {
         },
         bottomBar = { BottomNav(router, active = Screen.Plans) }
     ) {
-        val plans = state.groups.values.toList()
-        if (plans.isEmpty()) {
+        SectionLabel("Bookings")
+        if (bookings.isEmpty()) {
             Text(
-                "No plans yet — find something to do and lock in a spot.",
+                "No bookings yet — find a real session and book it.",
                 color = MaxTimeColors.muted, fontSize = 11.5.sp,
                 modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp)
             )
         } else {
-            plans.forEach { group ->
+            bookings.forEach { booking ->
+                MaxTimeCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(booking.activity, color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        StatusChip(booking.statusLabel, booking.statusVariant)
+                    }
+                    Text(booking.whenLabel, style = MaxTimeType.caption, modifier = Modifier.padding(top = 4.dp))
+                    Text(
+                        "${booking.venueName} · ${booking.serviceName}" + if (booking.amount > 0) " · ₹${booking.amount}" else "",
+                        style = MaxTimeType.caption,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+        }
+
+        SectionLabel("Groups")
+        val groups = state.groups.values.toList()
+        if (groups.isEmpty()) {
+            Text(
+                "No group activities yet — find something to do and lock in a spot.",
+                color = MaxTimeColors.muted, fontSize = 11.5.sp,
+                modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp)
+            )
+        } else {
+            groups.forEach { group ->
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     onClick = {

@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -17,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.Group
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.MaxTimeCard
@@ -34,11 +39,33 @@ import com.maxtime.app.ui.theme.MaxTimeType
 
 @Composable
 fun SessionDetailScreen(state: AppState, router: Router) {
+    var checkedSession by remember { mutableStateOf(state.selectedSession != null) }
     LaunchedEffect(Unit) {
         if (state.selectedSession == null) state.selectSession()
+        checkedSession = true
     }
-    val session = state.selectedSession ?: return
+
+    val session = state.selectedSession
+    if (session == null) {
+        ScreenScaffold(topBar = { TopBar(title = "Session", onBack = { router.goBack() }) }) {
+            if (checkedSession) {
+                Text(
+                    "No real sessions available for ${state.intent.activity} right now — check back once a partner has openings.",
+                    color = MaxTimeColors.muted, fontSize = 12.5.sp,
+                    modifier = Modifier.padding(MaxTimeSpacing.screenPadding)
+                )
+            }
+        }
+        return
+    }
     val info = state.activityInfo(session.activity)
+
+    var groups by remember { mutableStateOf<List<Group>>(emptyList()) }
+    LaunchedEffect(session.id) {
+        groups = state.groupsForActivity(session.activity)
+    }
+    val exactGroup = groups.firstOrNull { it.sessionId == session.id }
+    val sameDayElsewhere = groups.firstOrNull { it.sessionId != session.id && it.sessionDate == session.date }
 
     ScreenScaffold(
         topBar = { TopBar(title = "Session", onBack = { router.goBack() }) },
@@ -80,10 +107,25 @@ fun SessionDetailScreen(state: AppState, router: Router) {
             Text(session.cancellationPolicy, color = MaxTimeColors.text, fontSize = 12.sp)
         }
 
-        MaxTimeCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                AvatarStack(listOf("A", "B", "C"))
-                Text("3 going", style = MaxTimeType.caption)
+        if (exactGroup != null) {
+            MaxTimeCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    AvatarStack(exactGroup.memberList.map { it.personName }.ifEmpty { listOf(exactGroup.creator) })
+                    Text("${exactGroup.members} going", style = MaxTimeType.caption)
+                }
+            }
+        } else if (sameDayElsewhere != null) {
+            MaxTimeCard(
+                Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp),
+                onClick = {
+                    state.intent = state.intent.copy(activity = session.activity)
+                    router.navigate(Screen.FindResults)
+                }
+            ) {
+                Text(
+                    "People are already doing this the same day, but at a different time — want to check?",
+                    color = MaxTimeColors.text, fontSize = 12.5.sp
+                )
             }
         }
     }

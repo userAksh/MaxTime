@@ -7,6 +7,8 @@ import java.util.Locale
 
 actual fun todayWeekdayIndex(): Int = LocalDate.now().dayOfWeek.value - 1
 
+actual fun todayIsoDate(): String = LocalDate.now().toString()
+
 actual fun nowMinutesSinceMidnight(): Int = LocalTime.now().let { it.hour * 60 + it.minute }
 
 actual fun upcomingDayLabels(count: Int): List<String> {

@@ -45,6 +45,10 @@ export interface Partner {
   status: PartnerStatus;
   verificationNotes?: string;
   commercial: CommissionRule | null;
+  /** Null until the partner actually finishes onboarding and hits "Submit for review" — status
+   *  alone flips to PENDING_VERIFICATION at step 0 (business name/type), well before the venue/
+   *  service steps, so it can't be used to tell a real submission apart from an abandoned draft. */
+  submittedAt: Timestamp | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -148,6 +152,8 @@ export interface AvailabilityRule {
   id: string;
   partnerId: string;
   serviceId: string;
+  venueId: string;
+  activityCategory: string;
   resourceId: string | null;
   daysOfWeek: number[]; // 0=Sun..6=Sat
   startTime: string; // "18:00"
@@ -227,11 +233,21 @@ export interface Booking {
   venueId: string;
   customerUserId: string;
   participantCount: number;
+  /** How many units of the slot's `remaining` this booking actually consumed at creation — the
+   *  headcount (participantCount) for a shared slot (CLASS/GROUP_SESSION/TRAINER_SESSION), but
+   *  always 1 for an exclusive COURT_BOOKING slot regardless of headcount (whoever books it gets
+   *  the whole court). Every place that releases inventory back (expiry, payment failure) must
+   *  release exactly this many units, not participantCount, or a court booking with 5 players
+   *  would wrongly free up 5 units on a slot that only ever held 1. */
+  slotUnitsHeld: number;
   status: BookingStatus;
   amount: number;
   currency: string;
   idempotencyKey: string;
   holdExpiresAt: Timestamp | null;
+  /** Set by createRazorpayOrder — lets paymentWebhook map a Razorpay webhook's `order_id` back to
+   *  this booking without depending on Razorpay's notes-propagation behavior. */
+  providerOrderId?: string;
   cancellationReason?: string;
   cancelledBy?: "CUSTOMER" | "PARTNER" | "OPS";
   /** Set once this booking's value has been included in a Payout — keeps payout runs from

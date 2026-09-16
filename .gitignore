@@ -27,6 +27,11 @@ captures/
 *.aab
 *.ap_
 *.dex
+*.keystore
+*.jks
+
+# Firebase CLI local deploy cache
+.firebase/
 
 # Xcode
 iosApp/build_out/

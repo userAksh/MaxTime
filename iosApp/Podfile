@@ -3,3 +3,14 @@ target 'iosApp' do
   platform :ios, '15.0'
   pod 'shared', :path => '../shared'
 end
+
+post_install do |installer|
+  # The shared KMP module only targets iosArm64 + iosSimulatorArm64 (no Intel simulator
+  # support) — exclude x86_64 from simulator builds across all pods, otherwise CocoaPods'
+  # generated project tries to build it for any config not literally named "Debug"/"Release".
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'x86_64'
+    end
+  end
+end

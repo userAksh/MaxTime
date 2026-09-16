@@ -13,6 +13,9 @@ interface PartnerRow {
   legalName: string | null;
   status: string;
   verificationNotes?: string | null;
+  /** Null until the partner actually hits "Submit for review" — status alone flips to
+   *  PENDING_VERIFICATION at onboarding step 0, well before that. */
+  submittedAt?: unknown;
 }
 
 interface VenueRow {
@@ -53,6 +56,12 @@ function PartnersContent() {
     });
   }, []);
 
+  // createPartnerAccount creates the partner doc (PENDING_VERIFICATION) at onboarding step 0,
+  // well before the venue/service steps and the final "Submit for review" — so plenty of these
+  // are abandoned/in-progress signups with nothing yet to actually review. Hide those from the
+  // queue rather than making admins act on drafts.
+  const visiblePartners = partners.filter((p) => p.status !== "PENDING_VERIFICATION" || !!p.submittedAt);
+
   async function review(partnerId: string, decision: "APPROVED" | "REJECTED") {
     setError(null);
     let notes: string | undefined;
@@ -87,7 +96,7 @@ function PartnersContent() {
       </p>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       <div className="mt-4 flex flex-col gap-2">
-        {partners.map((p) => (
+        {visiblePartners.map((p) => (
           <div key={p.id} className="rounded-lg border border-neutral-200 bg-white text-sm">
             <div
               role="button"

@@ -11,6 +11,9 @@ export interface PartnerDoc {
   displayName: string;
   status: "PENDING_VERIFICATION" | "APPROVED" | "REJECTED" | "SUSPENDED";
   verificationNotes?: string;
+  /** Null until the partner actually hits "Submit for review" — status alone flips to
+   *  PENDING_VERIFICATION at onboarding step 0, well before that. */
+  submittedAt?: unknown;
 }
 
 /** Live (onSnapshot, not a one-off get) since a partner's status can change out from under them —

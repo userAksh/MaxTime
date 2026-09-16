@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.Group
 import com.maxtime.app.data.Session
 import com.maxtime.app.data.StatusChipVariant
 import com.maxtime.app.data.sessionDateMatch
@@ -48,13 +49,16 @@ fun FindResultsScreen(state: AppState, router: Router) {
     val scope = rememberCoroutineScope()
     val info = state.activityInfo()
     var sessions by remember { mutableStateOf<List<Session>>(emptyList()) }
+    var groups by remember { mutableStateOf<List<Group>>(emptyList()) }
     var sessionsLoading by remember { mutableStateOf(true) }
     LaunchedEffect(state.intent.activity, state.location) {
         sessionsLoading = true
         sessions = state.sessionsFor()
+        groups = state.groupsForActivity(state.intent.activity)
         sessionsLoading = false
     }
     val people = state.eligiblePeopleForIntent()
+    val connectedNames = remember(people) { people.filter { it.connected }.map { it.name }.toSet() }
     val shown = sessions.take(2)
     val matches = shown.map { sessionDateMatch(it.date, state.intent.whenLabel) }
     val noneMatchRequest = shown.isNotEmpty() && matches.all { it != null } && matches.none { it!!.matchesRequest }
@@ -126,43 +130,59 @@ fun FindResultsScreen(state: AppState, router: Router) {
             shown.forEachIndexed { index, session ->
                 val dateMatch = matches[index]
                 val mismatched = dateMatch != null && !dateMatch.matchesRequest
+                val realGroup = groups.firstOrNull { it.sessionId == session.id }
+                val connectedGoing = realGroup?.connections?.firstOrNull { it in connectedNames }
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     backgroundColor = if (mismatched) MaxTimeColors.bg2 else MaxTimeColors.cardBg,
                     borderColor = if (mismatched) MaxTimeColors.bg3 else MaxTimeColors.cardBorder,
                     onClick = {
-                        scope.launch {
-                            val g = state.joinExistingGroup()
-                            if (g != null) router.navigate(Screen.GroupDetail)
+                        if (realGroup != null) {
+                            state.selectedGroup = realGroup
+                            router.navigate(Screen.GroupDetail)
+                        } else {
+                            scope.launch {
+                                val g = state.joinExistingGroup()
+                                if (g != null) router.navigate(Screen.GroupDetail)
+                            }
                         }
                     }
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                            val going = if (index == 0) "3 going · 1 spot open" else "2 going · 2 spots open"
+                            val going = if (realGroup != null) {
+                                "${realGroup.members} going · ${realGroup.openSlots} spot${if (realGroup.openSlots == 1) "" else "s"} open"
+                            } else {
+                                "No one's joined this time slot yet"
+                            }
                             Text(going, color = if (mismatched) MaxTimeColors.muted2 else MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
                             val dayLabel = dateMatch?.relativeLabel ?: session.date
-                            Text("${session.venueName} · $dayLabel, ${session.startTime} · ${session.distanceKm} km", style = MaxTimeType.caption)
+                            Text("${session.venueName} · $dayLabel, ${session.startTime} · ${state.location.kmLabel(session.distanceKm)}", style = MaxTimeType.caption)
                         }
                         if (mismatched) {
                             StatusChip("Different day", StatusChipVariant.FULL)
-                        } else {
-                            StatusChip("Filling", StatusChipVariant.FILLING)
+                        } else if (realGroup != null) {
+                            StatusChip(realGroup.statusLabel, realGroup.statusVariant)
                         }
                     }
-                    if (index == 0 && !mismatched) {
-                        Text("◆ Ayesha, who you know, is going", color = MaxTimeColors.accent2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                    if (connectedGoing != null && !mismatched) {
+                        Text("◆ $connectedGoing, who you know, is going", color = MaxTimeColors.accent2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        AvatarStack(if (index == 0) listOf("A", "B", "C") else listOf("A", "B"))
+                        if (realGroup != null) {
+                            AvatarStack(realGroup.memberList.map { it.personName }.ifEmpty { listOf(realGroup.creator) })
+                        } else {
+                            Text("Be the first to join", style = MaxTimeType.caption)
+                        }
+                        val joinLabel = if (realGroup != null) "Join group" else "Start it"
                         if (mismatched) {
                             androidx.compose.foundation.layout.Box(
                                 Modifier.clip(RoundedCornerShape(9.dp)).background(MaxTimeColors.cardBg).border(1.dp, MaxTimeColors.cardBorder, RoundedCornerShape(9.dp)).padding(horizontal = 14.dp, vertical = 7.dp)
-                            ) { Text("Join group", color = MaxTimeColors.muted2, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            ) { Text(joinLabel, color = MaxTimeColors.muted2, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                         } else {
                             androidx.compose.foundation.layout.Box(
                                 Modifier.clip(RoundedCornerShape(9.dp)).background(MaxTimeColors.accent).padding(horizontal = 14.dp, vertical = 7.dp)
-                            ) { Text("Join group", color = MaxTimeColors.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            ) { Text(joinLabel, color = MaxTimeColors.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }

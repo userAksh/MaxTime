@@ -1,12 +1,15 @@
 package com.maxtime.app.ui.screens.tabs
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -14,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.data.firebase.AuthRepository
 import com.maxtime.app.ui.components.BottomNav
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.ScreenScaffold
@@ -23,9 +27,23 @@ import com.maxtime.app.ui.nav.Screen
 import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import kotlinx.coroutines.launch
 
 @Composable
 fun MyProfileScreen(state: AppState, router: Router) {
+    val scope = rememberCoroutineScope()
+    val authRepository = remember { AuthRepository() }
+
+    fun signOutTapped() {
+        scope.launch {
+            authRepository.signOut()
+            state.resetForSignOut()
+            // reset, not navigate — the whole authenticated back stack (Home, Discover, etc.) is
+            // no longer valid once signed out, so Back must not be able to return into it.
+            router.reset(Screen.Splash)
+        }
+    }
+
     ScreenScaffold(bottomBar = { BottomNav(router, active = Screen.MyProfile) }) {
         Text("Profile", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
 
@@ -62,6 +80,15 @@ fun MyProfileScreen(state: AppState, router: Router) {
                 "⚡ ${state.freeInvitesLeft} free invite${if (state.freeInvitesLeft == 1) "" else "s"} left",
                 color = MaxTimeColors.accent2, fontWeight = FontWeight.Bold, fontSize = 13.5.sp
             )
+        }
+
+        SectionLabel("Account")
+        MaxTimeCard(
+            Modifier
+                .padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp)
+                .clickable(onClick = ::signOutTapped)
+        ) {
+            Text("Sign out", color = MaxTimeColors.red, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
         }
     }
 }

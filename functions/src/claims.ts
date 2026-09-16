@@ -1,5 +1,5 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
-import { auth } from "./admin";
+import { auth, db } from "./admin";
 import { PartnerUser } from "./types";
 
 /**
@@ -21,14 +21,34 @@ export const onPartnerUserWrite = onDocumentWritten(
     const userId = after?.userId ?? before?.userId;
     if (!userId) return;
 
-    if (!after || after.status === "DEACTIVATED") {
+    if (after && after.status !== "DEACTIVATED") {
+      await auth.setCustomUserClaims(userId, {
+        partnerId: after.partnerId,
+        partnerRole: after.role,
+      });
+      return;
+    }
+
+    // This particular membership was deleted or deactivated — but the same person can still have
+    // a DIFFERENT active partner_users record (e.g. a leftover duplicate signup being cleaned up,
+    // or genuinely belonging to more than one partner) whose claims must not be wiped out just
+    // because this unrelated one went away.
+    const stillActive = await db
+      .collection("partner_users")
+      .where("userId", "==", userId)
+      .where("status", "==", "ACTIVE")
+      .limit(1)
+      .get();
+
+    if (stillActive.empty) {
       await auth.setCustomUserClaims(userId, null);
       return;
     }
 
+    const other = stillActive.docs[0].data() as PartnerUser;
     await auth.setCustomUserClaims(userId, {
-      partnerId: after.partnerId,
-      partnerRole: after.role,
+      partnerId: other.partnerId,
+      partnerRole: other.role,
     });
   }
 );

@@ -7,7 +7,6 @@ import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/f
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { usePartner } from "@/lib/use-partner";
-import { callFunction } from "@/lib/functions";
 import { PartnerNav } from "@/components/PartnerNav";
 
 interface BookingRow {
@@ -31,28 +30,21 @@ export default function HomePage() {
   const { partner, loading: partnerLoading } = usePartner();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [payout, setPayout] = useState<PayoutRow | null>(null);
-  const [resubmitting, setResubmitting] = useState(false);
-  const [resubmitError, setResubmitError] = useState<string | null>(null);
-
-  async function submitAnotherRequest() {
-    setResubmitError(null);
-    setResubmitting(true);
-    try {
-      await callFunction<Record<string, never>, { ok: boolean }>("resubmitPartnerAccount")({});
-    } catch (e) {
-      setResubmitError(e instanceof Error ? e.message : "Could not resubmit. Try again.");
-    } finally {
-      setResubmitting(false);
-    }
-  }
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
   }, [authLoading, user, router]);
 
   useEffect(() => {
-    if (!authLoading && !partnerLoading && user && !partnerId) router.push("/onboarding");
-  }, [authLoading, partnerLoading, user, partnerId, router]);
+    // createPartnerAccount fires at onboarding step 0 (business name/type), well before the
+    // venue/schedule/pricing steps and the final "Submit for review" — so a partnerId claim
+    // existing does NOT mean onboarding was actually finished; submittedAt does. Without this,
+    // anyone who left onboarding partway would be routed straight to the "pending review"
+    // dead-end with no way back into the form to finish it.
+    if (!authLoading && !partnerLoading && user && (!partnerId || (partner && !partner.submittedAt))) {
+      router.push("/onboarding");
+    }
+  }, [authLoading, partnerLoading, user, partnerId, partner, router]);
 
   useEffect(() => {
     if (!partnerId || partner?.status !== "APPROVED") return;
@@ -82,7 +74,7 @@ export default function HomePage() {
     };
   }, [partnerId, partner?.status]);
 
-  if (authLoading || partnerLoading || !user || !partnerId) return null;
+  if (authLoading || partnerLoading || !user || !partnerId || !partner?.submittedAt) return null;
 
   if (partner?.status === "PENDING_VERIFICATION") {
     return (
@@ -104,16 +96,12 @@ export default function HomePage() {
           {partner.verificationNotes || "Contact MaxTime support for details."}
         </p>
         {partner.status === "REJECTED" && (
-          <>
-            <button
-              disabled={resubmitting}
-              className="mt-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-              onClick={submitAnotherRequest}
-            >
-              {resubmitting ? "Submitting…" : "Submit another request"}
-            </button>
-            {resubmitError && <p className="text-sm text-red-600">{resubmitError}</p>}
-          </>
+          <button
+            className="mt-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white"
+            onClick={() => router.push("/onboarding")}
+          >
+            Submit another request
+          </button>
         )}
         <SignOutLink />
       </main>

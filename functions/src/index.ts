@@ -10,6 +10,7 @@ export { generateInventoryFromRule, blockInventorySlot } from "./inventory";
 export { createBookingHold, expireStaleHolds } from "./booking";
 export { addParticipant, removeParticipant } from "./participants";
 export { paymentWebhook } from "./payments";
+export { createRazorpayOrder } from "./razorpay";
 export { markAttendance } from "./attendance";
 export { submitPartnerLead } from "./leads";
 export { calculatePayout, setPayoutHold } from "./payouts";

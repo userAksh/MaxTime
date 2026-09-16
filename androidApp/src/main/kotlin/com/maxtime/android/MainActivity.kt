@@ -8,6 +8,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.maxtime.app.data.location.AppContextHolder
+import com.maxtime.app.data.payment.RazorpayCheckoutBridge
+import com.razorpay.PaymentData
+import com.razorpay.PaymentResultWithDataListener
 import com.maxtime.app.MaxTimeApp as MaxTimeAppRoot
 
 class MaxTimeApp : Application() {
@@ -17,7 +20,12 @@ class MaxTimeApp : Application() {
     }
 }
 
-class MainActivity : ComponentActivity() {
+// PaymentResultWithDataListener is required here, not inside shared's RazorpayCheckoutLauncher —
+// Razorpay's closed-source SDK calls back into whichever Activity hosted Checkout.open() directly
+// (not via the standard onActivityResult contract), so the callback has to land on a real Activity
+// class. Both overrides just forward to RazorpayCheckoutBridge, which completes whatever suspend
+// call is currently awaiting a result.
+class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // This app's background is always dark (MaxTimeColors), regardless of the device's
@@ -31,5 +39,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaxTimeAppRoot()
         }
+    }
+
+    override fun onPaymentSuccess(razorpayPaymentId: String?, paymentData: PaymentData?) {
+        RazorpayCheckoutBridge.onSuccess(razorpayPaymentId.orEmpty())
+    }
+
+    override fun onPaymentError(code: Int, description: String?, paymentData: PaymentData?) {
+        RazorpayCheckoutBridge.onError(description ?: "Payment failed.")
     }
 }

@@ -70,10 +70,10 @@ export const generateInventoryFromRule = onCall(async (request) => {
         const slot: Omit<InventorySlot, "id"> = {
           ruleId,
           partnerId,
-          venueId: (rule as unknown as { venueId?: string }).venueId ?? "",
+          venueId: rule.venueId,
           resourceId: rule.resourceId,
           serviceId: rule.serviceId,
-          activityCategory: (rule as unknown as { activityCategory?: string }).activityCategory ?? "",
+          activityCategory: rule.activityCategory,
           date: dateStr,
           startTime: slotStart,
           endTime: slotEnd,

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "220230896601",
+    "project_id": "maxtime-beta",
+    "storage_bucket": "maxtime-beta.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:220230896601:android:5e84a9296c863e8c4767c8",
+        "android_client_info": {
+          "package_name": "com.maxtime.android.beta"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1Vwgd-8Lm5HeapQ3PcZ9H0MVioOwdwF8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

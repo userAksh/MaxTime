@@ -9,7 +9,7 @@ enum class Screen {
     Splash, AgeGate, Auth, Profile, Interests,
     Home, Discover, Groups, Plans, MyProfile,
     FindWhat, FindWhen, FindWhenCustom, FindWhere, FindResults,
-    ActivityDetail, SessionDetail, PersonDetail, MatchRequest,
+    ActivityDetail, VenueSessions, SessionDetail, PersonDetail, MatchRequest,
     CreateGroup, GroupDetail, GroupChat,
     BookingReview, BookingSuccess
 }
@@ -45,5 +45,13 @@ class Router(start: Screen = Screen.Splash) {
         if (backStack.isEmpty()) return false
         current = backStack.removeAt(backStack.lastIndex)
         return true
+    }
+
+    /** Starts over at [screen] with no history — unlike [navigate], the old back stack is
+     *  discarded rather than pushed onto, so Back can't return into screens that are no longer
+     *  valid (e.g. authenticated screens after a sign-out). */
+    fun reset(screen: Screen) {
+        backStack.clear()
+        current = screen
     }
 }

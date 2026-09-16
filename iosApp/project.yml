@@ -5,15 +5,39 @@ options:
     iOS: "15.0"
   generateEmptyDirectories: true
 
+# Three environments, each pointing at its own Firebase project (see iosApp/iosApp/Firebase/).
+# Staging is the day-to-day development build; Beta is for pre-release testing (TestFlight);
+# Production is the App Store build.
+configs:
+  Staging: debug
+  Beta: release
+  Production: release
+
 schemes:
-  iosApp:
+  MaxTime-Staging:
     build:
       targets:
         iosApp: all
     run:
-      config: Debug
+      config: Staging
     archive:
-      config: Release
+      config: Staging
+  MaxTime-Beta:
+    build:
+      targets:
+        iosApp: all
+    run:
+      config: Beta
+    archive:
+      config: Beta
+  MaxTime-Production:
+    build:
+      targets:
+        iosApp: all
+    run:
+      config: Production
+    archive:
+      config: Production
 
 targets:
   iosApp:
@@ -21,15 +45,46 @@ targets:
     platform: iOS
     sources:
       - path: iosApp
+        excludes:
+          - "Firebase/GoogleService-Info-*.plist"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.maxtime.ios
         PRODUCT_NAME: iosApp
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_PREVIEWS: YES
+        DEVELOPMENT_TEAM: SYZY6GZ623
+        CODE_SIGN_STYLE: Automatic
+        # The shared KMP module and its pods only build for arm64 simulator (no Intel support) —
+        # exclude x86_64 here too, otherwise Release-type configs (ONLY_ACTIVE_ARCH=NO) still
+        # try to build/link an x86_64 slice that Firebase/shared were never produced for.
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+      configs:
+        Staging:
+          PRODUCT_BUNDLE_IDENTIFIER: com.maxtime.ios.staging
+          PRODUCT_NAME: MaxTime Staging
+          REVERSED_APP_ID_URL_SCHEME: app-1-513938349085-ios-4cca66017f00d936b17af4
+        Beta:
+          PRODUCT_BUNDLE_IDENTIFIER: com.maxtime.ios.beta
+          PRODUCT_NAME: MaxTime Beta
+          REVERSED_APP_ID_URL_SCHEME: app-1-220230896601-ios-e39a8e1c8b14e4224767c8
+        Production:
+          PRODUCT_BUNDLE_IDENTIFIER: com.maxtime.ios
+          PRODUCT_NAME: MaxTime
+          REVERSED_APP_ID_URL_SCHEME: app-1-130636243911-ios-d067622960adf8cc782fe2
+    postBuildScripts:
+      - name: Copy Firebase config for active environment
+        script: |
+          set -euo pipefail
+          SRC="${SRCROOT}/iosApp/Firebase/GoogleService-Info-${CONFIGURATION}.plist"
+          DEST="${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+          if [ ! -f "$SRC" ]; then
+            echo "error: no GoogleService-Info.plist for configuration ${CONFIGURATION} at ${SRC}"
+            exit 1
+          fi
+          cp -f "$SRC" "$DEST"
     info:
       path: iosApp/Info.plist
       properties:
@@ -43,7 +98,7 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleLightContent
         CFBundleURLTypes:
           - CFBundleURLSchemes:
-              - app-1-130636243911-ios-d067622960adf8cc782fe2
+              - $(REVERSED_APP_ID_URL_SCHEME)
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UISupportedInterfaceOrientations~ipad:

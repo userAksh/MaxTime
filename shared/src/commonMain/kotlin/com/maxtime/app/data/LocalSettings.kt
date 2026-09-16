@@ -14,6 +14,26 @@ expect object LocalSettings {
     fun putBoolean(key: String, value: Boolean)
 }
 
+internal object AppPrefsKeys {
+    /** Lives in the same on-device storage a full uninstall actually clears (NSUserDefaults /
+     *  SharedPreferences) — unlike iOS Keychain, which Firebase Auth's session survives in even
+     *  after the app is deleted. Its absence is a reliable "this install has never launched
+     *  before" signal, used to catch a stale Keychain session left over from before the delete. */
+    const val HAS_LAUNCHED_BEFORE = "has_launched_before"
+
+    /** Set only once InterestsScreen's final "Finish — Go to Home" actually runs — signing in
+     *  (currentUser != null) is NOT the same as having finished onboarding, since Auth is well
+     *  before Profile/Interests in the flow. Without this, closing the app between Auth and
+     *  Interests and reopening it sent people straight to Home on the strength of currentUser
+     *  alone, past Profile/Interests they'd never actually filled in — landing on Home with
+     *  whatever placeholder default AppState.currentUser started with, not a real name.
+     *
+     *  Keyed by uid, not a single flat flag: now that sign-out exists, a second, genuinely
+     *  different account can sign in on the same device afterward, and a flat flag would
+     *  incorrectly carry the FIRST account's completed status over to them. */
+    fun onboardingCompleteKey(uid: String) = "onboarding_complete_$uid"
+}
+
 internal object LocationPrefsKeys {
     const val CONFIRMED = "location_confirmed"
     const val AREA = "location_area"

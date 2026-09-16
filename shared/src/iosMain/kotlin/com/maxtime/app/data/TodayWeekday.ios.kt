@@ -4,7 +4,9 @@ import platform.Foundation.NSCalendar
 import platform.Foundation.NSCalendarUnitDay
 import platform.Foundation.NSCalendarUnitHour
 import platform.Foundation.NSCalendarUnitMinute
+import platform.Foundation.NSCalendarUnitMonth
 import platform.Foundation.NSCalendarUnitWeekday
+import platform.Foundation.NSCalendarUnitYear
 import platform.Foundation.NSDate
 
 /** NSCalendar's `weekday` component is 1 = Sunday ... 7 = Saturday (Gregorian). `(weekday + 5)
@@ -12,6 +14,15 @@ import platform.Foundation.NSDate
 actual fun todayWeekdayIndex(): Int {
     val weekday = NSCalendar.currentCalendar.component(NSCalendarUnitWeekday, NSDate()).toInt()
     return (weekday + 5) % 7
+}
+
+actual fun todayIsoDate(): String {
+    val calendar = NSCalendar.currentCalendar
+    val now = NSDate()
+    val year = calendar.component(NSCalendarUnitYear, now).toInt()
+    val month = calendar.component(NSCalendarUnitMonth, now).toInt()
+    val day = calendar.component(NSCalendarUnitDay, now).toInt()
+    return "${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}"
 }
 
 actual fun nowMinutesSinceMidnight(): Int {

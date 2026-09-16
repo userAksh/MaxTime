@@ -1,5 +1,6 @@
 package com.maxtime.app.ui.screens.onboarding
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,17 +13,18 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,20 +35,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maxtime.app.data.AppPrefsKeys
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.DEFAULT_SELECTED_INTERESTS
+import com.maxtime.app.data.LocalSettings
 import com.maxtime.app.data.firebase.AuthRepository
 import com.maxtime.app.data.firebase.UserProfileRepository
 import com.maxtime.app.data.firebase.buildPhoneVerificationProvider
 import com.maxtime.app.data.firebase.rememberPhoneAuthContext
+import com.maxtime.app.data.media.decodeImageBitmap
+import com.maxtime.app.data.media.pickProfilePhoto
+import com.maxtime.app.data.media.rememberImagePickerContext
+import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.InterestChip
 import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ProgressBar
+import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.SecondaryButton
 import com.maxtime.app.ui.components.TopBar
 import com.maxtime.app.ui.theme.MaxTimeColors
@@ -88,7 +99,7 @@ fun SplashScreen(onGetStarted: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text("Find the activity. Find the people.", style = MaxTimeType.body)
         }
-        Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 22.dp)) {
+        Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).imePadding().padding(horizontal = 24.dp, vertical = 22.dp)) {
             PrimaryButton("Get started", onClick = onGetStarted)
         }
     }
@@ -109,7 +120,7 @@ fun AgeGateScreen(onContinue: () -> Unit) {
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
         )
         Spacer(Modifier.weight(1f))
-        Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 22.dp)) {
+        Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).imePadding().padding(horizontal = 24.dp, vertical = 22.dp)) {
             PrimaryButton("I am 18 or older — Continue", onClick = onContinue)
         }
     }
@@ -172,11 +183,34 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        OnboardingProgressHeader(
-            step = 2,
-            onBack = if (view != AuthView.ENTRY) { { view = AuthView.ENTRY } } else null
-        )
+    ScreenScaffold(
+        topBar = {
+            OnboardingProgressHeader(
+                step = 2,
+                onBack = if (view != AuthView.ENTRY) { { view = AuthView.ENTRY } } else null
+            )
+        },
+        bottomBar = {
+            BottomCta {
+                when (view) {
+                    AuthView.ENTRY -> {
+                        PrimaryButton(if (isLoading) "Sending…" else "Send OTP", onClick = ::sendOtp, enabled = !isLoading && phone.length == 10)
+                        OrDivider()
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SecondaryButton("Email", Modifier.weight(1f), onClick = { view = AuthView.EMAIL })
+                            SecondaryButton("Continue as guest", Modifier.weight(1f), onClick = ::continueAsGuest)
+                        }
+                    }
+                    AuthView.EMAIL -> {
+                        PrimaryButton("Send code", onClick = { view = AuthView.OTP })
+                    }
+                    AuthView.OTP -> {
+                        PrimaryButton(if (isLoading) "Verifying…" else "Verify", onClick = ::submitOtp, enabled = !isLoading && otp.length == 6)
+                    }
+                }
+            }
+        }
+    ) {
         Text("Get you set up", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
 
         when (view) {
@@ -184,7 +218,14 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                 Text("Enter your number and we will text you a code.", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
                 FieldLabel("Mobile number")
                 Row(
-                    Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 24.dp),
+                    // A fixed height instead of IntrinsicSize.Min — the latter needs to query
+                    // BasicTextField's intrinsic height, which is unreliable now that this Row
+                    // sits inside ScreenScaffold's scrollable content (verticalScroll gives its
+                    // children an effectively infinite height constraint, and intrinsic
+                    // measurement doesn't handle that well), so the row was measuring shorter
+                    // than the field's real rendered content and the Send OTP button below ended
+                    // up drawn over the bottom of the field instead of below it.
+                    Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
@@ -199,20 +240,11 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                             .padding(horizontal = 14.dp, vertical = 13.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        MaxTimeTextField(phone, { phone = it }, "98765 43210", KeyboardType.Phone)
+                        MaxTimeTextField(phone, { phone = it }, "98765 43210", KeyboardType.Phone, maxLength = 10, digitsOnly = true)
                     }
                 }
                 errorText?.let {
                     Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
-                }
-                Spacer(Modifier.weight(1f))
-                Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-                    PrimaryButton(if (isLoading) "Sending…" else "Send OTP", onClick = ::sendOtp, enabled = !isLoading && phone.isNotBlank())
-                    OrDivider()
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton("Email", Modifier.weight(1f), onClick = { view = AuthView.EMAIL })
-                        SecondaryButton("Continue as guest", Modifier.weight(1f), onClick = ::continueAsGuest)
-                    }
                 }
             }
             AuthView.EMAIL -> {
@@ -225,10 +257,6 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                 ) {
                     MaxTimeTextField(email, { email = it }, "you@example.com", KeyboardType.Email)
                 }
-                Spacer(Modifier.weight(1f))
-                Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-                    PrimaryButton("Send code", onClick = { view = AuthView.OTP })
-                }
             }
             AuthView.OTP -> {
                 Text("Code sent to +91 $phone", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
@@ -238,20 +266,17 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                         .border(1.dp, MaxTimeColors.accent, MaxTimeShapes.medium)
                         .padding(horizontal = 14.dp, vertical = 13.dp)
                 ) {
-                    MaxTimeTextField(otp, { if (it.length <= 6) otp = it }, "6-digit code", KeyboardType.NumberPassword)
+                    MaxTimeTextField(otp, { otp = it }, "6-digit code", KeyboardType.NumberPassword, maxLength = 6, digitsOnly = true)
                 }
                 errorText?.let {
                     Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
-                }
-                Spacer(Modifier.weight(1f))
-                Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-                    PrimaryButton(if (isLoading) "Verifying…" else "Verify", onClick = ::submitOtp, enabled = !isLoading && otp.length == 6)
                 }
             }
         }
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
     var name by remember { mutableStateOf(state.currentUser.name) }
@@ -259,10 +284,45 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
     var errorText by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val profileRepository = remember { UserProfileRepository() }
+    val imagePickerContext = rememberImagePickerContext()
+
+    // DatePickerState works in epoch millis (UTC start-of-day) — formatDateOfBirth converts that
+    // straight to a DD/MM/YYYY string with pure integer date math, deliberately not going through
+    // any platform Calendar/Date API, so there's no local-timezone rounding to shift the day by one.
+    var dobMillis by remember { mutableStateOf<Long?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dobMillis)
+
+    var photoUrl by remember { mutableStateOf(state.currentUser.photoUrl) }
+    var isUploadingPhoto by remember { mutableStateOf(false) }
+    // Decoded once from the picked bytes and kept for this screen's lifetime, independent of the
+    // upload — shows what was actually picked immediately, rather than a checkmark/placeholder
+    // standing in for it while the upload runs (or if it fails).
+    var pickedPreview by remember { mutableStateOf<ImageBitmap?>(null) }
+
+    fun pickPhoto() {
+        scope.launch {
+            val picked = pickProfilePhoto(imagePickerContext) ?: return@launch
+            pickedPreview = decodeImageBitmap(picked.bytes)
+            val uid = Firebase.auth.currentUser?.uid ?: return@launch
+            errorText = null
+            isUploadingPhoto = true
+            try {
+                val url = profileRepository.uploadProfilePhoto(uid, picked)
+                photoUrl = url
+                state.currentUser = state.currentUser.copy(photoUrl = url)
+            } catch (e: Exception) {
+                errorText = e.message ?: "Couldn't upload photo. Try again."
+            } finally {
+                isUploadingPhoto = false
+            }
+        }
+    }
 
     fun continueTapped() {
         val finalName = name.trim().ifBlank { state.currentUser.name }
-        state.currentUser = state.currentUser.copy(name = finalName)
+        val dobFormatted = dobMillis?.let { formatDateOfBirth(it) } ?: state.currentUser.dateOfBirth
+        state.currentUser = state.currentUser.copy(name = finalName, dateOfBirth = dobFormatted)
         val uid = Firebase.auth.currentUser?.uid
         if (uid == null) {
             onContinue()
@@ -272,7 +332,7 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
         isSaving = true
         scope.launch {
             try {
-                profileRepository.saveProfile(uid, finalName, Firebase.auth.currentUser?.phoneNumber)
+                profileRepository.saveProfile(uid, finalName, Firebase.auth.currentUser?.phoneNumber, dobFormatted)
                 onContinue()
             } catch (e: Exception) {
                 isSaving = false
@@ -281,28 +341,83 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        OnboardingProgressHeader(step = 3)
+    ScreenScaffold(
+        topBar = { OnboardingProgressHeader(step = 3) },
+        bottomBar = {
+            BottomCta {
+                PrimaryButton(if (isSaving) "Saving…" else "Continue", onClick = ::continueTapped, enabled = !isSaving && name.isNotBlank())
+            }
+        }
+    ) {
         Text("Add your name and photo", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         Text("This is how others recognize you at an activity.", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
         Box(
             Modifier.padding(top = 6.dp, bottom = 22.dp).align(Alignment.CenterHorizontally)
                 .size(104.dp).clip(CircleShape).background(MaxTimeColors.cardBg)
-                .border(2.dp, MaxTimeColors.cardBorder, CircleShape),
+                .border(2.dp, MaxTimeColors.cardBorder, CircleShape)
+                .clickable(enabled = !isUploadingPhoto) { pickPhoto() },
             contentAlignment = Alignment.Center
-        ) { Text("+", color = MaxTimeColors.muted, fontSize = 26.sp) }
+        ) {
+            when {
+                pickedPreview != null -> Image(
+                    bitmap = pickedPreview!!,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                isUploadingPhoto -> Text("…", color = MaxTimeColors.muted, fontSize = 20.sp)
+                // A resumed session (photoUrl known from an earlier upload, but not picked again
+                // this time) has no local bytes to decode a preview from — showing a remote image
+                // here would need a network image loader, which nothing else in this app pulls in
+                // yet, so this stays a checkmark rather than the actual photo.
+                photoUrl != null -> Text("✓", color = MaxTimeColors.accent, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                else -> Text("+", color = MaxTimeColors.muted, fontSize = 26.sp)
+            }
+        }
         FieldLabel("Full name")
         EditableFieldBox(name, { name = it }, "Your name")
         FieldLabel("Date of birth")
-        FieldValueBox("14 / 03 / 1998")
+        FieldValueBox(dobMillis?.let { formatDateOfBirth(it) } ?: "Select date of birth", onClick = { showDatePicker = true })
         errorText?.let {
             Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
         }
-        Spacer(Modifier.weight(1f))
-        Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
-            PrimaryButton(if (isSaving) "Saving…" else "Continue", onClick = ::continueTapped, enabled = !isSaving && name.isNotBlank())
+    }
+
+    if (showDatePicker) {
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    dobMillis = datePickerState.selectedDateMillis
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState)
         }
     }
+}
+
+/** Pure integer civil-calendar conversion (Howard Hinnant's days_from_civil algorithm) — no
+ *  platform Calendar/Date API, so there's no local-timezone rounding to worry about, since
+ *  DatePickerState's selectedDateMillis is UTC start-of-day already. */
+private fun formatDateOfBirth(epochMillis: Long): String {
+    val days = epochMillis.floorDiv(86_400_000L)
+    val z = days + 719468
+    val era = (if (z >= 0) z else z - 146096).floorDiv(146097)
+    val doe = z - era * 146097
+    val yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    val y = yoe + era * 400
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val day = doy - (153 * mp + 2) / 5 + 1
+    val month = if (mp < 10) mp + 3 else mp - 9
+    val year = if (month <= 2) y + 1 else y
+    fun Long.pad2() = if (this < 10) "0$this" else "$this"
+    return "${day.pad2()} / ${month.pad2()} / $year"
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -317,6 +432,9 @@ fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
         state.interests = selected
         val uid = Firebase.auth.currentUser?.uid
         if (uid == null) {
+            // No uid means no auth session at all — shouldn't be reachable this far into
+            // onboarding, but with nothing to key the completion flag by, there's nothing to
+            // persist here either.
             onFinish()
             return
         }
@@ -327,6 +445,7 @@ fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
             } catch (_: Exception) {
                 // Best-effort — interests aren't a blocking step, the user still lands on Home.
             }
+            LocalSettings.putBoolean(AppPrefsKeys.onboardingCompleteKey(uid), true)
             onFinish()
         }
     }
@@ -367,7 +486,7 @@ fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
             }
             Spacer(Modifier.height(20.dp))
         }
-        Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Column(Modifier.fillMaxWidth().background(MaxTimeColors.bg1).imePadding().padding(horizontal = 24.dp, vertical = 16.dp)) {
             PrimaryButton(if (isSaving) "Saving…" else "Finish — Go to Home", onClick = ::finishTapped, enabled = !isSaving)
         }
     }
@@ -397,13 +516,14 @@ private fun EditableFieldBox(value: String, onValueChange: (String) -> Unit, pla
 }
 
 @Composable
-private fun FieldValueBox(text: String) {
+private fun FieldValueBox(text: String, onClick: (() -> Unit)? = null) {
     Box(
         Modifier.padding(horizontal = 24.dp, vertical = 0.dp).padding(bottom = 16.dp)
             .fillMaxWidth()
             .clip(MaxTimeShapes.medium)
             .background(MaxTimeColors.cardBg)
             .border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.medium)
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 14.dp, vertical = 13.dp)
     ) { Text(text, color = MaxTimeColors.muted, fontSize = 13.5.sp) }
 }
@@ -418,16 +538,47 @@ private fun OrDivider() {
 }
 
 @Composable
-private fun MaxTimeTextField(value: String, onValueChange: (String) -> Unit, placeholder: String, keyboardType: KeyboardType) {
+private fun MaxTimeTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    keyboardType: KeyboardType,
+    maxLength: Int? = null,
+    digitsOnly: Boolean = false
+) {
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     Box {
         if (value.isEmpty()) {
             Text(placeholder, color = MaxTimeColors.muted, fontSize = 13.5.sp)
         }
         BasicTextField(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { raw ->
+                val filtered = if (digitsOnly) raw.filter { it.isDigit() } else raw
+                val limited = if (maxLength != null) filtered.take(maxLength) else filtered
+                onValueChange(limited)
+                // Reaching the expected length (a full phone number, a full OTP) means this field
+                // is done — drop focus and dismiss the keyboard so it doesn't sit there covering
+                // the CTA button once there's nothing left to type. Clearing focus (not just hiding
+                // the keyboard) is what makes tapping the field again reliably bring it back up.
+                if (maxLength != null && limited.length == maxLength) {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                }
+            },
             textStyle = TextStyle(color = MaxTimeColors.textStrong, fontSize = 13.5.sp),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
+            singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = keyboardType,
+                imeAction = androidx.compose.ui.text.input.ImeAction.Done
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onDone = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                }
+            ),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(MaxTimeColors.accent),
             modifier = Modifier.fillMaxWidth()
         )

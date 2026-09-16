@@ -16,5 +16,7 @@ class AuthRepository {
 
     suspend fun signInAnonymously(): AuthResult = auth.signInAnonymously()
 
+    suspend fun signOut() = auth.signOut()
+
     val currentUserId: String? get() = auth.currentUser?.uid
 }

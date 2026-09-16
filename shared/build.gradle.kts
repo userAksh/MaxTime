@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -33,6 +34,18 @@ kotlin {
         ios.deploymentTarget = "15.0"
         podfile = project.file("../iosApp/Podfile")
 
+        // Xcode config names are the environment names (see iosApp/project.yml), not Xcode's
+        // default Debug/Release — the cocoapods plugin needs an explicit mapping for each.
+        xcodeConfigurationToNativeBuildType["Staging"] = NativeBuildType.DEBUG
+        // Beta pinned to DEBUG as a workaround for a Kotlin/Native compiler bug: linking the
+        // shared framework in RELEASE mode produces a duplicate-symbol error on a FirebaseAuth
+        // cinterop binding (reproduces via a bare `gradlew :shared:linkPodReleaseFrameworkIosArm64`,
+        // independent of Xcode/CocoaPods — a real upstream issue, not a project misconfiguration).
+        // The app's own Swift/Xcode code still builds fully optimized under the Beta config; only
+        // the KMP framework itself skips optimization. Revisit before Production ships.
+        xcodeConfigurationToNativeBuildType["Beta"] = NativeBuildType.DEBUG
+        xcodeConfigurationToNativeBuildType["Production"] = NativeBuildType.RELEASE
+
         framework {
             baseName = "shared"
             isStatic = true
@@ -41,6 +54,16 @@ kotlin {
         pod("FirebaseAuth")
         pod("FirebaseFirestore")
         pod("FirebaseStorage")
+        pod("FirebaseFunctions")
+        // The pod's own framework is named RazorpayStandard, not razorpay-pod/razorpay_pod —
+        // without this override Kotlin's cocoapods plugin guesses the wrong module name from the
+        // pod name and cinterop generation fails with "module 'razorpay_pod' not found". packageName
+        // is set explicitly too since it's otherwise snapshotted from the pre-override default
+        // (cocoapods.razorpay_pod) rather than following the moduleName override above.
+        pod("razorpay-pod") {
+            moduleName = "RazorpayStandard"
+            packageName = "cocoapods.RazorpayStandard"
+        }
     }
 
     sourceSets {
@@ -59,6 +82,7 @@ kotlin {
             implementation(libs.firebase.auth)
             implementation(libs.firebase.firestore)
             implementation(libs.firebase.storage)
+            implementation(libs.firebase.functions)
             implementation(libs.kotlinx.serialization.core)
         }
         commonTest.dependencies {
@@ -70,6 +94,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.play.services.location)
             implementation(libs.maps.compose)
+            api(libs.razorpay.checkout)
         }
     }
 }

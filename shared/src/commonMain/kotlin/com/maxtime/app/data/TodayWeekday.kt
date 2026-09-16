@@ -3,6 +3,10 @@ package com.maxtime.app.data
 /** ISO weekday index for the device's real current date: 0 = Monday ... 6 = Sunday. */
 expect fun todayWeekdayIndex(): Int
 
+/** The device's real current date as ISO `yyyy-MM-dd` — used to compute day offsets for real
+ *  InventorySlot-derived Sessions, which carry ISO dates rather than weekday abbreviations. */
+expect fun todayIsoDate(): String
+
 /** Minutes since local midnight, right now on the device. */
 expect fun nowMinutesSinceMidnight(): Int
 

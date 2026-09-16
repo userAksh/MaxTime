@@ -36,6 +36,7 @@ private data class GroupDoc(
     val where: String = "",
     val venue: String? = null,
     val sessionId: String? = null,
+    val sessionDate: String? = null,
     val needed: Int = 0,
     val capacity: Int = 0,
     val creator: String = "",
@@ -66,6 +67,13 @@ class FirestoreGroupRepository : GroupRepository {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val col get() = Firebase.firestore.collection("groups")
 
+    /** Keyed by activity — Home re-derives its "people & groups doing this" card via
+     *  [groupsForActivity] every time it's revisited (screens are fully recomposed on tab
+     *  switch, see [com.maxtime.app.ui.nav.Router]), so without this every switch back to Home
+     *  re-issues the same Firestore query. Invalidated on [save] since that's the one path that
+     *  can change what a query for the affected group's activity would return. */
+    private val groupsByActivityCache = mutableMapOf<String, List<Group>>()
+
     override suspend fun loadMyGroups(myName: String) {
         val docs = col.where { "participantNames" contains myName }.get().documents
         for (doc in docs) {
@@ -74,7 +82,13 @@ class FirestoreGroupRepository : GroupRepository {
         }
     }
 
+    override suspend fun groupsForActivity(activity: String): List<Group> =
+        groupsByActivityCache.getOrPut(activity) {
+            col.where { "activity" equalTo activity }.get().documents.map { it.data<GroupDoc>().toGroup(it.id) }
+        }
+
     override fun save(group: Group) {
+        groupsByActivityCache.remove(group.activity)
         scope.launch {
             try {
                 col.document(group.id).set(group.toDoc())
@@ -130,6 +144,7 @@ class FirestoreGroupRepository : GroupRepository {
             where = location.area,
             venue = session.venueName,
             sessionId = session.id,
+            sessionDate = session.date,
             needed = 1,
             capacity = 4,
             creator = "Ayesha",
@@ -171,6 +186,7 @@ class FirestoreGroupRepository : GroupRepository {
             where = where,
             venue = venue,
             sessionId = sessionId,
+            sessionDate = sessionDate,
             needed = needed,
             capacity = capacity,
             creator = creator,
@@ -194,6 +210,7 @@ class FirestoreGroupRepository : GroupRepository {
         where = where,
         venue = venue,
         sessionId = sessionId,
+        sessionDate = sessionDate,
         needed = needed,
         capacity = capacity,
         creator = creator,

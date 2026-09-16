@@ -14,6 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.maxtime.app.data.formatSessionDate
+import com.maxtime.app.data.formatSessionTime
+import com.maxtime.app.data.sessionChronoKey
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,22 +96,35 @@ fun ActivityDetailScreen(state: AppState, router: Router) {
                 modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding)
             )
         } else {
-            sessions.forEach { session ->
+            val venueGroups = remember(sessions) {
+                sessions.groupBy { it.venueName }.mapValues { (_, group) -> group.sortedBy(::sessionChronoKey) }
+            }
+            venueGroups.forEach { (venueName, venueSessions) ->
+                val next = venueSessions.first()
+                val minPrice = venueSessions.minOf { it.price }
+                val maxPrice = venueSessions.maxOf { it.price }
+                val priceLabel = when {
+                    maxPrice <= 0 -> "Free"
+                    minPrice == maxPrice -> "₹$minPrice"
+                    else -> "₹$minPrice–₹$maxPrice"
+                }
                 MaxTimeCard(
                     Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
                     onClick = {
-                        scope.launch {
-                            state.selectSession(session.venueName)
-                            router.navigate(Screen.SessionDetail)
-                        }
+                        state.selectedVenueName = venueName
+                        router.navigate(Screen.VenueSessions)
                     }
                 ) {
-                    Text(session.venueName, color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    val priceLabel = if (session.price > 0) "₹${session.price}" else "Free"
+                    Text(venueName, color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     Text(
-                        "${session.date}, ${session.startTime} · $priceLabel · ${session.distanceKm} km away · ${session.spotsLeft} spots left",
+                        "$priceLabel · ${state.location.kmAwayLabel(next.distanceKm)} · ${venueSessions.size} time slot${if (venueSessions.size == 1) "" else "s"}",
                         style = MaxTimeType.caption,
                         modifier = Modifier.padding(top = 4.dp)
+                    )
+                    Text(
+                        "Next: ${formatSessionDate(next.date)}, ${formatSessionTime(next.startTime)}",
+                        style = MaxTimeType.caption,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }
