@@ -69,7 +69,7 @@ targets:
         Beta:
           PRODUCT_BUNDLE_IDENTIFIER: com.maxtime.ios.beta
           PRODUCT_NAME: MaxTime Beta
-          REVERSED_APP_ID_URL_SCHEME: app-1-220230896601-ios-e39a8e1c8b14e4224767c8
+          REVERSED_APP_ID_URL_SCHEME: app-1-513938349085-ios-cbe82e7d0d51b43fb17af4
         Production:
           PRODUCT_BUNDLE_IDENTIFIER: com.maxtime.ios
           PRODUCT_NAME: MaxTime
