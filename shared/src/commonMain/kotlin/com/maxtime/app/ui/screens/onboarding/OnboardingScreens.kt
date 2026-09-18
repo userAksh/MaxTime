@@ -1,5 +1,6 @@
 package com.maxtime.app.ui.screens.onboarding
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,8 +36,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -51,17 +56,21 @@ import com.maxtime.app.data.AppState
 import com.maxtime.app.data.DEFAULT_SELECTED_INTERESTS
 import com.maxtime.app.data.LocalSettings
 import com.maxtime.app.data.firebase.AuthRepository
+import com.maxtime.app.data.firebase.ReferralFunctions
+import com.maxtime.app.data.firebase.RedeemReferralOutcome
 import com.maxtime.app.data.firebase.UserProfileRepository
 import com.maxtime.app.data.firebase.buildPhoneVerificationProvider
 import com.maxtime.app.data.firebase.rememberPhoneAuthContext
 import com.maxtime.app.data.media.decodeImageBitmap
 import com.maxtime.app.data.media.pickProfilePhoto
 import com.maxtime.app.data.media.rememberImagePickerContext
-import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.InterestChip
 import com.maxtime.app.ui.components.OtpCodeInput
 import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ProgressBar
+import com.maxtime.app.ui.components.ReferralCodeCard
+import com.maxtime.app.ui.components.ReferralCodePhase
+import com.maxtime.app.ui.components.ReferralProgramInfo
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.SecondaryButton
 import com.maxtime.app.ui.components.TopBar
@@ -79,7 +88,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun OnboardingProgressHeader(step: Int, total: Int = 4, onBack: (() -> Unit)? = null) {
+fun OnboardingProgressHeader(step: Int, total: Int = 5, onBack: (() -> Unit)? = null) {
     Column {
         ProgressBar(step, total, Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 10.dp))
         TopBar(onBack = onBack)
@@ -409,6 +418,131 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
     }
 }
 
+/**
+ * MaxTime_Claude_Product_Design_Context.docx §6-11 — optional referral code entry, right after
+ * Auth (needs a signed-in uid) and before Profile. All referral business logic (attribution,
+ * fraud checks, qualification, reward state machine) lives entirely in the referral Cloud
+ * Functions (functions/src/referral.ts) — this screen only calls ReferralFunctions and renders
+ * whatever it gets back; nothing here duplicates or reimplements a referral rule.
+ *
+ * Visuals here are deliberately plain/placeholder (see ReferralCodeCard's own doc comment) —
+ * the approved character artwork/animation is supplied separately per the brief and slots into
+ * ReferralCodeCard without needing to touch this screen's state/wiring at all.
+ */
+@Composable
+fun ReferralScreen(onContinue: () -> Unit) {
+    var phase by remember { mutableStateOf(ReferralCodePhase.INPUT) }
+    var code by remember { mutableStateOf("") }
+    var programInfo by remember { mutableStateOf<ReferralProgramInfo?>(null) }
+    var appliedCode by remember { mutableStateOf<String?>(null) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val referralFunctions = remember { ReferralFunctions() }
+
+    LaunchedEffect(Unit) {
+        // Returning to this step after a valid referral was already established (app closed and
+        // reopened mid-onboarding, or the user swiped back and forward again) — reflect that
+        // immediately instead of showing a blank form for an already-decided step.
+        val alreadyLinked = try {
+            val summary = referralFunctions.getMyReferralSummary()
+            summary.asReferee
+        } catch (e: Exception) {
+            null // a failed summary read shouldn't block onboarding, only the "already linked" preview
+        }
+        if (alreadyLinked != null) {
+            appliedCode = alreadyLinked.code
+            val reward = alreadyLinked.refereeReward
+            if (reward != null) {
+                programInfo = ReferralProgramInfo(
+                    refereeDiscountPercent = reward.discountPercent ?: 0,
+                    refereeDiscountCapAmount = reward.discountCapAmount ?: 0,
+                    referrerDiscountPercent = 0 // not shown once already applied — see referralSubtitle's VALID branch
+                )
+            }
+            phase = ReferralCodePhase.VALID
+            return@LaunchedEffect
+        }
+
+        // Not yet linked — fetch the live admin-configured percentages for the prompt copy
+        // (never hardcode these client-side; they're admin-controlled server-side). Reuses
+        // generateMyReferralCode rather than a new endpoint — it also mints/returns this user's
+        // own shareable code as a side effect, which is harmless (every user gets one eventually
+        // anyway for sharing later).
+        try {
+            val info = referralFunctions.generateMyReferralCode()
+            programInfo = ReferralProgramInfo(
+                refereeDiscountPercent = info.refereeDiscountPercent,
+                refereeDiscountCapAmount = info.refereeDiscountCapAmount,
+                referrerDiscountPercent = info.referrerDiscountPercent
+            )
+        } catch (e: Exception) {
+            // Referral program not configured/active server-side, or a transient network issue —
+            // programInfo just stays null and the generic (no-numbers) copy shows instead. Must
+            // never block Continue/Skip just because this optional preview failed to load.
+        }
+    }
+
+    fun submit() {
+        val trimmed = code.trim()
+        if (trimmed.isEmpty()) {
+            onContinue()
+            return
+        }
+        errorText = null
+        phase = ReferralCodePhase.LOADING
+        scope.launch {
+            when (val outcome = referralFunctions.redeemReferralCode(trimmed)) {
+                is RedeemReferralOutcome.Redeemed -> {
+                    appliedCode = trimmed
+                    val percent = outcome.result.refereeDiscountPercent
+                    val cap = outcome.result.refereeDiscountCapAmount
+                    if (percent != null) {
+                        programInfo = ReferralProgramInfo(
+                            refereeDiscountPercent = percent,
+                            refereeDiscountCapAmount = cap ?: 0,
+                            // Now sourced directly from this same redeemReferralCode response
+                            // (server-snapshotted from the same config read as the referee
+                            // fields above) — previously this fell back to whatever the earlier,
+                            // unrelated generateMyReferralCode() call had left in programInfo, so
+                            // if that call hadn't resolved yet (or failed), this silently showed
+                            // "They'll get 0% too!" despite the referee's own percent being correct.
+                            referrerDiscountPercent = outcome.result.referrerDiscountPercent
+                                ?: programInfo?.referrerDiscountPercent ?: 0
+                        )
+                    }
+                    phase = ReferralCodePhase.VALID
+                }
+                is RedeemReferralOutcome.Rejected -> {
+                    errorText = outcome.message
+                    phase = ReferralCodePhase.INVALID
+                }
+            }
+        }
+    }
+
+    ScreenScaffold(topBar = { OnboardingProgressHeader(step = 3) }) {
+        Spacer(Modifier.height(8.dp))
+        ReferralCodeCard(
+            phase = phase,
+            code = code,
+            // Deliberately does NOT flip phase back to INPUT on the first keystroke — that would
+            // swap ReferralCodeCard from the INVALID layout (standalone field, no illustration)
+            // to the INPUT layout (field overlapping the illustration) mid-edit. Since those are
+            // different composable call sites, the old BasicTextField gets torn down and a new
+            // one created elsewhere on screen, which drops focus and dismisses the keyboard —
+            // exactly the "backspace kicks me out" bug. Staying on INVALID keeps the same field
+            // in place so the user can correct the code and resubmit via the same "Try Again"
+            // button without ever losing focus.
+            onCodeChange = { code = it },
+            onContinue = { if (phase == ReferralCodePhase.VALID) onContinue() else submit() },
+            onSkip = onContinue,
+            programInfo = programInfo,
+            appliedCode = appliedCode,
+            errorMessage = errorText
+        )
+    }
+}
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
@@ -474,14 +608,15 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
         }
     }
 
-    ScreenScaffold(
-        topBar = { OnboardingProgressHeader(step = 3) },
-        bottomBar = {
-            BottomCta {
-                PrimaryButton(if (isSaving) "Saving…" else "Continue", onClick = ::continueTapped, enabled = !isSaving && name.isNotBlank())
-            }
-        }
-    ) {
+    // Deliberately no bottomBar/BottomCta here — a fixed bottom bar sits pinned right above the
+    // keyboard, independent of this content's own scroll position, which with fields this far
+    // down the screen (photo, name, THEN date of birth) meant the pinned Continue button could
+    // end up sitting directly on top of/right against the date-of-birth field once the keyboard
+    // opened, instead of the two ever being able to separate via scrolling. Putting the button
+    // inside the same scrollable column as the fields (matching ReferralCodeCard's approach)
+    // means it scrolls together with them and ScreenScaffold's own imePadding (the
+    // `bottomBar == null` branch) keeps it clear of the keyboard like everything else here.
+    ScreenScaffold(topBar = { OnboardingProgressHeader(step = 4) }) {
         Text("Add your name and photo", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         Text("This is how others recognize you at an activity.", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
         Box(
@@ -500,20 +635,37 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
                 )
                 isUploadingPhoto -> Text("…", color = MaxTimeColors.muted, fontSize = 20.sp)
                 // A resumed session (photoUrl known from an earlier upload, but not picked again
-                // this time) has no local bytes to decode a preview from — showing a remote image
-                // here would need a network image loader, which nothing else in this app pulls in
-                // yet, so this stays a checkmark rather than the actual photo.
-                photoUrl != null -> Text("✓", color = MaxTimeColors.accent, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                else -> Text("+", color = MaxTimeColors.muted, fontSize = 26.sp)
+                // this time) has no local bytes to decode a preview from — but Coil3's
+                // AsyncImage (registered once in App.kt, already used by AvatarCircle elsewhere)
+                // loads the real remote photo directly, same as everywhere else in the app shows
+                // a saved profile photo. This used to show a plain checkmark instead, from before
+                // that image loader existed here.
+                photoUrl != null -> coil3.compose.AsyncImage(
+                    model = photoUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                // A bare "+" reads as a generic "add" affordance, not specifically "add a photo" —
+                // a camera glyph is the standard, immediately-recognizable convention for that
+                // (same idea as WhatsApp/Instagram's own profile-photo placeholder).
+                else -> CameraGlyph(tint = MaxTimeColors.muted)
             }
         }
         FieldLabel("Full name")
-        EditableFieldBox(name, { name = it }, "Your name")
+        EditableFieldBox(name, { name = it }, "Enter your name")
         FieldLabel("Date of birth")
         FieldValueBox(dobMillis?.let { formatDateOfBirth(it) } ?: "Select date of birth", onClick = { showDatePicker = true })
         errorText?.let {
             Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
         }
+        Spacer(Modifier.height(20.dp))
+        PrimaryButton(
+            if (isSaving) "Saving…" else "Continue",
+            onClick = ::continueTapped,
+            enabled = !isSaving && name.isNotBlank() && dobMillis != null,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+        )
     }
 
     if (showDatePicker) {
@@ -575,8 +727,12 @@ fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
         scope.launch {
             try {
                 profileRepository.saveInterests(uid, selected)
+                profileRepository.markOnboardingComplete(uid)
             } catch (_: Exception) {
                 // Best-effort — interests aren't a blocking step, the user still lands on Home.
+                // markOnboardingComplete not reaching Firestore here just means this device's own
+                // local flag (below) is what carries them to Home this time; App.kt's own
+                // backfill (see its LaunchedEffect) will retry writing the server flag next launch.
             }
             LocalSettings.putBoolean(AppPrefsKeys.onboardingCompleteKey(uid), true)
             onFinish()
@@ -584,7 +740,7 @@ fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        OnboardingProgressHeader(step = 4)
+        OnboardingProgressHeader(step = 5)
         Text("What are you into?", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         Text("Pick a few, this shapes your first recommendations.", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
 
@@ -625,6 +781,37 @@ fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
     }
 }
 
+/** Small custom-drawn camera outline — avoids pulling in a whole icon-font/library dependency
+ *  for one glyph, same reasoning as ReferralCodeCard's PersonGlyph. */
+@Composable
+private fun CameraGlyph(tint: Color) {
+    Canvas(Modifier.size(28.dp)) {
+        val strokeWidth = size.width * 0.09f
+        val bodyTop = size.height * 0.34f
+        val bodyHeight = size.height * 0.48f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(0f, bodyTop),
+            size = Size(size.width, bodyHeight),
+            cornerRadius = CornerRadius(size.width * 0.14f, size.width * 0.14f),
+            style = Stroke(width = strokeWidth)
+        )
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(size.width * 0.34f, bodyTop - size.height * 0.1f),
+            size = Size(size.width * 0.32f, size.height * 0.14f),
+            cornerRadius = CornerRadius(size.width * 0.05f, size.width * 0.05f),
+            style = Stroke(width = strokeWidth)
+        )
+        drawCircle(
+            color = tint,
+            radius = size.width * 0.15f,
+            center = Offset(size.width / 2f, bodyTop + bodyHeight / 2f),
+            style = Stroke(width = strokeWidth * 0.9f)
+        )
+    }
+}
+
 @Composable
 private fun FieldLabel(text: String) {
     Text(
@@ -645,7 +832,15 @@ private fun EditableFieldBox(value: String, onValueChange: (String) -> Unit, pla
             .background(MaxTimeColors.cardBg)
             .border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.medium)
             .padding(horizontal = 14.dp, vertical = 13.dp)
-    ) { MaxTimeTextField(value, onValueChange, placeholder, KeyboardType.Text) }
+    ) {
+        // Capitalize the first letter of each word — a name typed from empty (including after
+        // clearing it to retype) should start capitalized without needing a manual shift tap,
+        // same as the system keyboard already does for a genuine "new text" field elsewhere.
+        MaxTimeTextField(
+            value, onValueChange, placeholder, KeyboardType.Text,
+            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words
+        )
+    }
 }
 
 @Composable
@@ -677,7 +872,8 @@ private fun MaxTimeTextField(
     placeholder: String,
     keyboardType: KeyboardType,
     maxLength: Int? = null,
-    digitsOnly: Boolean = false
+    digitsOnly: Boolean = false,
+    capitalization: androidx.compose.ui.text.input.KeyboardCapitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None
 ) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
@@ -738,6 +934,7 @@ private fun MaxTimeTextField(
             singleLine = true,
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                 keyboardType = keyboardType,
+                capitalization = capitalization,
                 imeAction = androidx.compose.ui.text.input.ImeAction.Done
             ),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(

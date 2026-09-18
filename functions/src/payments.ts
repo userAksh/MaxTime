@@ -4,7 +4,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import * as crypto from "crypto";
 import Razorpay from "razorpay";
 import { db } from "./admin";
-import { Booking, InventorySlot, PaymentStatus } from "./types";
+import { revertAppliedReward } from "./referral";
+import { Booking, InventorySlot, PaymentStatus, Referral, ReferralReward } from "./types";
 import { razorpayWebhookSecret } from "./razorpay";
 
 /**
@@ -91,6 +92,16 @@ export const paymentWebhook = onRequest({ secrets: [razorpayWebhookSecret] }, as
         return;
       }
 
+      // Read now — before this transaction's first write below — regardless of whether this
+      // attempt will actually turn out to be SUCCEEDED or FAILED, since Firestore transactions
+      // require every read before any write and the referral relevance isn't known until after
+      // `paymentStatus` is checked further down.
+      const rewardSnap = booking.appliedReferralRewardId
+        ? await tx.get(db.collection("referral_rewards").doc(booking.appliedReferralRewardId))
+        : null;
+      const referralSnap =
+        rewardSnap?.exists ? await tx.get(db.collection("referrals").doc((rewardSnap.data() as ReferralReward).referralId)) : null;
+
       const paymentStatus: PaymentStatus = status;
       tx.set(paymentRef, {
         bookingId: bookingRef.id,
@@ -121,6 +132,18 @@ export const paymentWebhook = onRequest({ secrets: [razorpayWebhookSecret] }, as
         }
         tx.update(bookingRef, { status: "PAYMENT_FAILED", updatedAt: FieldValue.serverTimestamp() });
         outcome = `booking ${bookingRef.id} -> PAYMENT_FAILED`;
+
+        if (rewardSnap && referralSnap?.exists) {
+          const referral = referralSnap.data() as Referral;
+          revertAppliedReward(
+            tx,
+            rewardSnap,
+            { referrerUserId: referral.referrerUserId, referredUserId: referral.referredUserId },
+            bookingRef,
+            "PAYMENT_FAILED",
+            { userId: "system", role: "SYSTEM" }
+          );
+        }
       }
     });
 

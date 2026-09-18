@@ -52,7 +52,12 @@ class AppState(
     private val paymentFunctions: PaymentFunctions = PaymentFunctions(),
     private val bookingsRepository: BookingsRepository = BookingsRepository()
 ) {
-    var currentUser by mutableStateOf(User(name = "Priya Sharma"))
+    // Empty, not a placeholder name — App.kt's own profile-load effect fills in the real saved
+    // name for a returning user; for a brand-new user this stays blank until ProfileScreen sets
+    // it, same as photoUrl/interests below. A hardcoded display name here would leak into
+    // ProfileScreen's editable field as if the user had already typed it (see MaxTimeTextField's
+    // placeholder handling, which only shows a hint when the value is genuinely empty).
+    var currentUser by mutableStateOf(User(name = ""))
     // A previously-confirmed location (real GPS fix, map pick, or submitted manual entry) is
     // restored immediately so a returning user never sees the location sheet again — a "Skip for
     // now" deliberately never persists, so skipping doesn't get silently treated the same as

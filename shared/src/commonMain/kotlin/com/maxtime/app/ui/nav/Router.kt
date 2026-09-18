@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 enum class Screen {
-    Splash, AgeGate, Auth, Profile, Interests,
+    Splash, AgeGate, Auth, Referral, Profile, Interests,
     Home, Discover, Groups, Plans, MyProfile,
     FindWhat, FindWhen, FindWhenCustom, FindWhere, FindResults,
     ActivityDetail, VenueSessions, SessionDetail, PersonDetail, MatchRequest,
@@ -17,7 +17,10 @@ enum class Screen {
 /** The 5 screens with a persistent bottom nav bar — every screen reachable directly from a tab. */
 val bottomNavScreens = listOf(Screen.Home, Screen.Discover, Screen.Groups, Screen.Plans, Screen.MyProfile)
 
-val onboardingOrder = listOf(Screen.Splash, Screen.AgeGate, Screen.Auth, Screen.Profile, Screen.Interests)
+// Referral sits right after Auth (needs a signed-in uid to call redeemReferralCode / check
+// account age) and before Profile — matches the product brief's own described sequence ("User B
+// may optionally enter User A's code during onboarding... User B continues onboarding").
+val onboardingOrder = listOf(Screen.Splash, Screen.AgeGate, Screen.Auth, Screen.Referral, Screen.Profile, Screen.Interests)
 
 fun nextOnboarding(current: Screen): Screen {
     val i = onboardingOrder.indexOf(current)

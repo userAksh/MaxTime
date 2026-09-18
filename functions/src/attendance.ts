@@ -2,7 +2,8 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "./admin";
 import { writeAuditLog } from "./audit";
-import { AttendanceStatus, Booking, BOOKING_TRANSITIONS, BookingStatus } from "./types";
+import { qualifyReferralIfApplicable, redeemAppliedReward, revertAppliedReward } from "./referral";
+import { AttendanceStatus, Booking, BOOKING_TRANSITIONS, BookingStatus, Referral, ReferralReward } from "./types";
 
 const ATTENDANCE_TO_BOOKING_STATUS: Record<AttendanceStatus, BookingStatus> = {
   CHECKED_IN: "CHECKED_IN",
@@ -43,6 +44,39 @@ export const markAttendance = onCall(async (request) => {
       );
     }
 
+    // Referral reads — must happen here, before any of this transaction's writes below (the
+    // Firestore transaction rule: all reads before any writes).
+    let referralSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    let referrerRewardSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    // Independent of the above: whichever single reward (if any) was applied to THIS booking at
+    // checkout — could be the referee's own reward (the common case) or a referrer redeeming
+    // their own later reward. Orthogonal to qualification: this finalizes the specific reward
+    // spent here, regardless of whose it is or whether it's even related to this referral.
+    let redeemRewardSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    if (nextBookingStatus === "COMPLETED") {
+      // Doc ID of `referrals` IS the referee's uid — see types.ts's Referral doc comment for why
+      // this alone (no query) is enough to know whether this booking's customer was ever
+      // referred, and whether anyone has already qualified this referral before.
+      referralSnap = await tx.get(db.collection("referrals").doc(booking.customerUserId));
+      if (referralSnap.exists && (referralSnap.data() as Referral).status === "PENDING") {
+        const referral = referralSnap.data() as Referral;
+        referrerRewardSnap = await tx.get(db.collection("referral_rewards").doc(referral.referrerRewardId));
+      }
+      if (booking.appliedReferralRewardId) {
+        redeemRewardSnap = await tx.get(db.collection("referral_rewards").doc(booking.appliedReferralRewardId));
+      }
+    }
+    let revertRewardSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    let revertReferralSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+    if (nextBookingStatus === "NO_SHOW" && booking.appliedReferralRewardId) {
+      revertRewardSnap = await tx.get(db.collection("referral_rewards").doc(booking.appliedReferralRewardId));
+      if (revertRewardSnap.exists) {
+        revertReferralSnap = await tx.get(
+          db.collection("referrals").doc((revertRewardSnap.data() as ReferralReward).referralId)
+        );
+      }
+    }
+
     tx.update(bookingRef, { status: nextBookingStatus, updatedAt: FieldValue.serverTimestamp() });
 
     const attendanceRef = db.collection("attendance").doc();
@@ -66,6 +100,25 @@ export const markAttendance = onCall(async (request) => {
       },
       tx
     );
+
+    const actor = { userId: request.auth!.uid, role: "PARTNER" };
+    if (referralSnap) {
+      qualifyReferralIfApplicable(tx, referralSnap, referrerRewardSnap, bookingId, actor);
+    }
+    if (redeemRewardSnap) {
+      redeemAppliedReward(tx, redeemRewardSnap, actor);
+    }
+    if (revertRewardSnap && revertReferralSnap?.exists) {
+      const revertReferral = revertReferralSnap.data() as Referral;
+      revertAppliedReward(
+        tx,
+        revertRewardSnap,
+        { referrerUserId: revertReferral.referrerUserId, referredUserId: revertReferral.referredUserId },
+        bookingRef,
+        "NO_SHOW",
+        actor
+      );
+    }
   });
 
   return { ok: true };

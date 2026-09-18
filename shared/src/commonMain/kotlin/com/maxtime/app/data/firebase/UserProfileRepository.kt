@@ -13,6 +13,13 @@ data class UserProfileDoc(
     val dateOfBirth: String? = null,
     val photoUrl: String? = null,
     val interests: Map<String, List<String>> = emptyMap(),
+    // Server-authoritative counterpart to the local onboardingCompleteKey flag in LocalSettings
+    // (App.kt/InterestsScreen) — that flag is per-device (NSUserDefaults/SharedPreferences), so a
+    // genuinely returning user on a new device or after a reinstall would otherwise read as
+    // "hasn't onboarded" and get routed back through Referral/Profile/Interests despite already
+    // having an account. This field is the durable signal App.kt actually needs to send them
+    // straight to Home instead.
+    val onboardingComplete: Boolean = false,
 )
 
 class UserProfileRepository {
@@ -50,6 +57,15 @@ class UserProfileRepository {
     suspend fun saveInterests(uid: String, interests: Map<String, Set<String>>) {
         val existing = loadProfile(uid) ?: UserProfileDoc()
         users.document(uid).set(existing.copy(interests = interests.mapValues { it.value.toList() }))
+    }
+
+    /** Called once, at the end of onboarding (or as a backfill for an account that finished
+     *  onboarding on some other device before this field existed) — see [UserProfileDoc.onboardingComplete]. */
+    suspend fun markOnboardingComplete(uid: String) {
+        val existing = loadProfile(uid) ?: UserProfileDoc()
+        if (!existing.onboardingComplete) {
+            users.document(uid).set(existing.copy(onboardingComplete = true))
+        }
     }
 
     suspend fun loadProfile(uid: String): UserProfileDoc? {
