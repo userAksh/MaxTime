@@ -28,6 +28,7 @@ import com.maxtime.app.data.AppState
 import com.maxtime.app.data.BookingStatus
 import com.maxtime.app.data.Group
 import com.maxtime.app.data.GroupStatus
+import com.maxtime.app.ui.components.AvatarPerson
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.PrimaryButton
@@ -60,7 +61,7 @@ fun GroupDetailScreen(state: AppState, router: Router) {
             topBar = { TopBar(title = "Group", onBack = { router.navigate(Screen.Groups) }) },
             bottomBar = { GroupFooter(state, group, router) }
         ) {
-            Column2(group)
+            Column2(group, state.currentUser.photoUrl)
 
             if (group.connections.isNotEmpty()) {
                 Text(
@@ -87,7 +88,7 @@ fun GroupDetailScreen(state: AppState, router: Router) {
 }
 
 @Composable
-private fun Column2(group: Group) {
+private fun Column2(group: Group, currentUserPhotoUrl: String?) {
     Box(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
             androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(end = 10.dp)) {
@@ -100,8 +101,9 @@ private fun Column2(group: Group) {
 
     Box(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).background(MaxTimeColors.cardBg).padding(14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            val names = listOf("You") + group.connections
-            AvatarStack(names, size = 32.dp)
+            val people = listOf(AvatarPerson("You", currentUserPhotoUrl)) +
+                group.connections.map { AvatarPerson(it) }
+            AvatarStack(people, size = 32.dp)
             Text("${group.members} / ${group.capacity} members", style = MaxTimeType.caption)
         }
     }

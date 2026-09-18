@@ -58,6 +58,7 @@ import com.maxtime.app.data.ActivityInfo
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.Group
 import com.maxtime.app.data.Session
+import com.maxtime.app.ui.components.AvatarPerson
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomNav
 import com.maxtime.app.ui.components.MaxTimeCard
@@ -190,7 +191,10 @@ fun HomeScreen(state: AppState, router: Router) {
                         StatusChip(groupValue.statusLabel, groupValue.statusVariant)
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        AvatarStack(groupValue.memberList.map { it.personName }.ifEmpty { listOf(groupValue.creator) })
+                        AvatarStack(
+                            groupValue.memberList.map { AvatarPerson(it.personName, it.photoUrl) }
+                                .ifEmpty { listOf(AvatarPerson(groupValue.creator)) }
+                        )
                         Box(Modifier.clip(RoundedCornerShape(9.dp)).background(MaxTimeColors.accent).padding(horizontal = 14.dp, vertical = 7.dp)) {
                             Text("See details", color = MaxTimeColors.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }

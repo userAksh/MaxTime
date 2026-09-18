@@ -1,23 +1,18 @@
 package com.maxtime.app.ui.screens.tabs
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.firebase.AuthRepository
+import com.maxtime.app.ui.components.AvatarCircle
 import com.maxtime.app.ui.components.BottomNav
 import com.maxtime.app.ui.components.MaxTimeCard
 import com.maxtime.app.ui.components.ScreenScaffold
@@ -48,20 +43,12 @@ fun MyProfileScreen(state: AppState, router: Router) {
         Text("Profile", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))
 
         val user = state.currentUser
-        Box(
-            Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp)
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(MaxTimeColors.accentWash),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                user.name.split(" ").mapNotNull { it.firstOrNull() }.take(2).joinToString("").uppercase(),
-                color = MaxTimeColors.accent,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 24.sp
-            )
-        }
+        AvatarCircle(
+            name = user.name,
+            photoUrl = user.photoUrl,
+            size = 72.dp,
+            modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp)
+        )
         Text(user.name, color = MaxTimeColors.textStrong, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding))
         val meta = listOfNotNull(user.phoneOrEmail, user.dateOfBirth?.let { "Born $it" }).joinToString("  ·  ")
         if (meta.isNotEmpty()) {

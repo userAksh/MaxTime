@@ -101,6 +101,11 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(compose.animation)
             implementation(libs.compottie)
+            // Pinned to 3.4.0 — like Compottie above, Coil 3.5.0+ ships iOS klibs built with a
+            // Kotlin compiler ahead of this project's 2.3.21 (confirmed: 3.6.2 fails with the
+            // same "KLIB resolver ABI" error). Re-check before bumping either this or Kotlin.
+            implementation(libs.coil.compose)
+            implementation(libs.coil.network.ktor)
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtime.compose)
             implementation(libs.kotlinx.coroutines.core)
@@ -120,7 +125,11 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.play.services.location)
             implementation(libs.maps.compose)
+            implementation(libs.ktor.client.okhttp)
             api(libs.razorpay.checkout)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
     }
 }

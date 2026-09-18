@@ -26,7 +26,8 @@ import kotlinx.serialization.Serializable
 private data class GroupMemberDoc(
     val personName: String = "",
     val role: String = GroupMemberRole.MEMBER.name,
-    val joinedAt: String = ""
+    val joinedAt: String = "",
+    val photoUrl: String? = null
 )
 
 @Serializable
@@ -104,7 +105,8 @@ class FirestoreGroupRepository : GroupRepository {
         location: UserLocation,
         creatorName: String,
         info: ActivityInfo,
-        priceIfDeadlineMissed: Int
+        priceIfDeadlineMissed: Int,
+        creatorPhotoUrl: String?
     ): Group {
         val key = "my-${intent.activity}-${intent.whenLabel}-${location.area}"
         groups[key]?.let { return it }
@@ -122,7 +124,7 @@ class FirestoreGroupRepository : GroupRepository {
             priceIfDeadlineMissed = priceIfDeadlineMissed,
             icon = info.icon
         )
-        g.memberList.add(GroupMember(creatorName, GroupMemberRole.CREATOR, "Just now"))
+        g.memberList.add(GroupMember(creatorName, GroupMemberRole.CREATOR, "Just now", creatorPhotoUrl))
         groups[key] = g
         save(g)
         return g
@@ -199,7 +201,7 @@ class FirestoreGroupRepository : GroupRepository {
         g.bookingStatus = BookingStatus.valueOf(bookingStatus)
         g.eventWeekdayIndex = eventWeekdayIndex
         g.eventStartMinutes = eventStartMinutes
-        members.forEach { g.memberList.add(GroupMember(it.personName, GroupMemberRole.valueOf(it.role), it.joinedAt)) }
+        members.forEach { g.memberList.add(GroupMember(it.personName, GroupMemberRole.valueOf(it.role), it.joinedAt, it.photoUrl)) }
         g.connections.addAll(connections)
         return g
     }
@@ -222,7 +224,7 @@ class FirestoreGroupRepository : GroupRepository {
         bookingStatus = bookingStatus.name,
         eventWeekdayIndex = eventWeekdayIndex,
         eventStartMinutes = eventStartMinutes,
-        members = memberList.map { GroupMemberDoc(it.personName, it.role.name, it.joinedAt) },
+        members = memberList.map { GroupMemberDoc(it.personName, it.role.name, it.joinedAt, it.photoUrl) },
         connections = connections.toList(),
         participantNames = memberList.map { it.personName }
     )

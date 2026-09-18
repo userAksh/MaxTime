@@ -89,7 +89,10 @@ enum class GroupMemberRole { CREATOR, MEMBER }
 data class GroupMember(
     val personName: String,
     val role: GroupMemberRole,
-    val joinedAt: String
+    val joinedAt: String,
+    // Only ever non-null for the real signed-in user (the creator) — invited/simulated
+    // co-members ("Ayesha", "Guest", invite-by-name) aren't real accounts with a real photo.
+    val photoUrl: String? = null
 )
 
 /**
@@ -226,7 +229,9 @@ data class ChatMessage(
     val senderId: String,
     val senderName: String,
     val text: String,
-    val sentAtMillis: Double
+    val sentAtMillis: Double,
+    // Only ever non-null when the real signed-in user sent this message — see GroupMember.photoUrl.
+    val photoUrl: String? = null
 )
 
 data class Person(

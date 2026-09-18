@@ -9,6 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import coil3.ImageLoader
+import coil3.compose.setSingletonImageLoaderFactory
+import coil3.network.ktor3.KtorNetworkFetcherFactory
 import com.maxtime.app.data.AppPrefsKeys
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.LocalSettings
@@ -29,6 +32,16 @@ import com.maxtime.app.ui.theme.MaxTimeTheme
 
 @Composable
 fun MaxTimeApp() {
+    // Coil 3's KMP setup requires exactly one singleton ImageLoader registered before any
+    // AsyncImage is used anywhere in the app — this is that one registration point. The Ktor
+    // fetcher is what lets a plain https:// photoUrl (Firebase Storage download URLs) actually
+    // load, rather than only local/bundled images.
+    setSingletonImageLoaderFactory { context ->
+        ImageLoader.Builder(context)
+            .components { add(KtorNetworkFetcherFactory()) }
+            .build()
+    }
+
     val state = remember { AppState() }
 
     // iOS Keychain — unlike NSUserDefaults/SharedPreferences — survives a full app delete, so
@@ -79,6 +92,9 @@ fun MaxTimeApp() {
             if (profile != null) {
                 if (profile.name.isNotBlank()) {
                     state.currentUser = state.currentUser.copy(name = profile.name)
+                }
+                if (profile.photoUrl != null) {
+                    state.currentUser = state.currentUser.copy(photoUrl = profile.photoUrl)
                 }
                 if (profile.interests.isNotEmpty()) {
                     state.interests = profile.interests.mapValues { it.value.toSet() }

@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
+import com.maxtime.app.ui.components.AvatarPerson
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomNav
 import com.maxtime.app.ui.components.MaxTimeCard
@@ -59,7 +60,10 @@ fun GroupsScreen(state: AppState, router: Router) {
                         StatusChip(group.statusLabel, group.statusVariant)
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        AvatarStack(if (group.connections.isEmpty()) listOf("You") else listOf("You") + group.connections)
+                        AvatarStack(
+                            listOf(AvatarPerson("You", state.currentUser.photoUrl)) +
+                                group.connections.map { AvatarPerson(it) }
+                        )
                         Text("${group.members}/${group.capacity} going", style = MaxTimeType.caption)
                     }
                 }

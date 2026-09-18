@@ -231,7 +231,8 @@ class AppState(
             location = location,
             creatorName = currentUser.name,
             info = info,
-            priceIfDeadlineMissed = increasedPrice(info.price)
+            priceIfDeadlineMissed = increasedPrice(info.price),
+            creatorPhotoUrl = currentUser.photoUrl
         )
     }
 

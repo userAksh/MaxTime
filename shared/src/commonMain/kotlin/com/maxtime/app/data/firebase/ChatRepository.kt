@@ -16,7 +16,8 @@ private data class ChatMessageDoc(
     val senderId: String = "",
     val senderName: String = "",
     val text: String = "",
-    val sentAt: Timestamp = Timestamp(0, 0)
+    val sentAt: Timestamp = Timestamp(0, 0),
+    val photoUrl: String? = null
 )
 
 /**
@@ -42,15 +43,18 @@ class ChatRepository {
                     senderId = m.senderId,
                     senderName = m.senderName,
                     text = m.text,
-                    sentAtMillis = m.sentAt.toMilliseconds()
+                    sentAtMillis = m.sentAt.toMilliseconds(),
+                    photoUrl = m.photoUrl
                 )
             }
         }.catch { emit(emptyList()) }
 
-    suspend fun sendMessage(groupId: String, senderId: String, senderName: String, text: String) {
+    suspend fun sendMessage(groupId: String, senderId: String, senderName: String, text: String, photoUrl: String? = null) {
         if (text.isBlank()) return
         try {
-            messages(groupId).add(ChatMessageDoc(senderId = senderId, senderName = senderName, text = text.trim(), sentAt = Timestamp.now()))
+            messages(groupId).add(
+                ChatMessageDoc(senderId = senderId, senderName = senderName, text = text.trim(), sentAt = Timestamp.now(), photoUrl = photoUrl)
+            )
         } catch (_: Exception) {
             // Best-effort — a dropped message shouldn't crash the screen; the real-time listener
             // simply won't show it, which is a visible-enough signal that it didn't go through.

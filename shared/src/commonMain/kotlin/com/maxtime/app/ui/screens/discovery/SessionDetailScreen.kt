@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.Group
+import com.maxtime.app.ui.components.AvatarPerson
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.MaxTimeCard
@@ -110,7 +111,10 @@ fun SessionDetailScreen(state: AppState, router: Router) {
         if (exactGroup != null) {
             MaxTimeCard(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    AvatarStack(exactGroup.memberList.map { it.personName }.ifEmpty { listOf(exactGroup.creator) })
+                    AvatarStack(
+                        exactGroup.memberList.map { AvatarPerson(it.personName, it.photoUrl) }
+                            .ifEmpty { listOf(AvatarPerson(exactGroup.creator)) }
+                    )
                     Text("${exactGroup.members} going", style = MaxTimeType.caption)
                 }
             }

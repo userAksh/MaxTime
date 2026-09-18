@@ -23,7 +23,8 @@ interface GroupRepository {
         location: UserLocation,
         creatorName: String,
         info: ActivityInfo,
-        priceIfDeadlineMissed: Int
+        priceIfDeadlineMissed: Int,
+        creatorPhotoUrl: String? = null
     ): Group
 
     fun joinExistingGroup(
@@ -60,7 +61,8 @@ class MockGroupRepository : GroupRepository {
         location: UserLocation,
         creatorName: String,
         info: ActivityInfo,
-        priceIfDeadlineMissed: Int
+        priceIfDeadlineMissed: Int,
+        creatorPhotoUrl: String?
     ): Group {
         val key = "my-${intent.activity}-${intent.whenLabel}-${location.area}"
         groups[key]?.let { return it }
@@ -78,7 +80,7 @@ class MockGroupRepository : GroupRepository {
             priceIfDeadlineMissed = priceIfDeadlineMissed,
             icon = info.icon
         )
-        g.memberList.add(GroupMember(creatorName, GroupMemberRole.CREATOR, "Just now"))
+        g.memberList.add(GroupMember(creatorName, GroupMemberRole.CREATOR, "Just now", creatorPhotoUrl))
         groups[key] = g
         return g
     }

@@ -49,10 +49,6 @@ fun OnboardingDeck(
     screenContent: @Composable (Screen) -> Unit
 ) {
     val idx = onboardingOrder.indexOf(router.current)
-    val nextKey = nextOnboarding(router.current)
-    val next2Key = if (idx != -1 && idx + 2 < onboardingOrder.size) onboardingOrder[idx + 2] else null
-    val hasPeek = idx < onboardingOrder.lastIndex
-    val hasPeek2 = next2Key != null
     // Auth is the one step where "swipe forward" would skip something real instead of just an
     // optional field — Profile/Interests already fall back to sane defaults if left blank, but
     // there's no valid way to "fill in" a successful phone/OTP verification by swiping past it.
@@ -60,22 +56,42 @@ fun OnboardingDeck(
 
     val density = LocalDensity.current
     val animX = remember { Animatable(0f) }
-    // Tracks the deck index this card has actually finished animating to. The drag gesture keeps
-    // this in lockstep with the router itself (see onAdvance/onBack below); a screen's own button
-    // calling router.navigate()/goBack() directly does not, so the effect below is what notices
-    // the mismatch and plays the same slide transition the drag gesture uses — forward/back looks
-    // identical regardless of whether the user swiped or tapped a button.
-    var renderedIdx by remember { mutableStateOf(idx) }
+    // Tracks the deck index the front-card animation is currently at/heading to. The drag
+    // gesture keeps this in lockstep with the router itself (see onAdvance/onBack below); a
+    // screen's own button calling router.navigate()/goBack() directly does not, so the effect
+    // below is what notices the mismatch and plays the same slide transition the drag gesture
+    // uses — forward/back looks identical regardless of whether the user swiped or tapped.
+    var animatingToIdx by remember { mutableStateOf(idx) }
+    // What the PEEK stack (below) is derived from — deliberately a step behind animatingToIdx.
+    // Advancing this the instant the router changes (as this used to do) swaps the peek cards'
+    // identity in the very same composition as a button-triggered navigation, before the front
+    // card has moved at all: e.g. verifying OTP jumps `idx` straight to Profile, so the peek
+    // immediately recomputes to "one past Profile" (Interests) — and since the compensating
+    // slide-in animation below still needs ~220ms to actually cover the screen, the very first
+    // drawn frame shows the front card already snapped off-screen with that Interests peek
+    // (96% scale, 90% opacity — practically full-bleed) as the only thing visible, until the
+    // real Profile screen slides in over it. That reads exactly as "Interests blinks, then
+    // Profile replaces it". Only moving this forward once the slide-in has actually finished
+    // means the exposed background never shows anything other than what it showed before the
+    // navigation started (i.e. still "Profile", identical to the card sliding in over it).
+    var settledIdx by remember { mutableStateOf(idx) }
 
     LaunchedEffect(idx) {
-        if (idx != renderedIdx && idx != -1) {
-            val forward = idx > renderedIdx
-            renderedIdx = idx
+        if (idx != animatingToIdx && idx != -1) {
+            val forward = idx > animatingToIdx
+            animatingToIdx = idx
             val startPx = with(density) { if (forward) 900.dp.toPx() else (-900).dp.toPx() }
             animX.snapTo(startPx)
             animX.animateTo(0f, tween(220))
+            settledIdx = idx
         }
     }
+
+    val peekBaseScreen = onboardingOrder.getOrElse(settledIdx) { router.current }
+    val nextKey = nextOnboarding(peekBaseScreen)
+    val next2Key = if (settledIdx != -1 && settledIdx + 2 < onboardingOrder.size) onboardingOrder[settledIdx + 2] else null
+    val hasPeek = settledIdx in 0 until onboardingOrder.lastIndex
+    val hasPeek2 = next2Key != null
 
     Box(Modifier.fillMaxSize().padding(34.dp)) {
         if (hasPeek2) {
@@ -84,7 +100,7 @@ fun OnboardingDeck(
             }
         }
         if (hasPeek) {
-            PeekCard(offsetX = (-13).dp, offsetY = (-13).dp, scale = 0.96f, rotationDeg = -1.5f, alpha = 1f) {
+            PeekCard(offsetX = (-13).dp, offsetY = (-13).dp, scale = 0.96f, rotationDeg = -1.5f, alpha = 0.9f) {
                 screenContent(nextKey)
             }
         }
@@ -93,11 +109,16 @@ fun OnboardingDeck(
             canGoBack = router.canGoBack,
             canAdvance = canSwipeForward,
             onAdvance = {
-                renderedIdx = idx + 1
+                // Reached only after the old front card has already animated fully off-screen
+                // (see DraggableFrontCard's onDragStopped), so there's no exposed gap here for a
+                // peek-identity swap to be visible in — safe to advance both trackers eagerly.
+                animatingToIdx = idx + 1
+                settledIdx = idx + 1
                 router.navigate(nextKey)
             },
             onBack = {
-                renderedIdx = idx - 1
+                animatingToIdx = idx - 1
+                settledIdx = idx - 1
                 router.goBack()
             }
         ) {

@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +41,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppPrefsKeys
@@ -55,6 +59,7 @@ import com.maxtime.app.data.media.pickProfilePhoto
 import com.maxtime.app.data.media.rememberImagePickerContext
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.InterestChip
+import com.maxtime.app.ui.components.OtpCodeInput
 import com.maxtime.app.ui.components.PrimaryButton
 import com.maxtime.app.ui.components.ProgressBar
 import com.maxtime.app.ui.components.ScreenScaffold
@@ -64,9 +69,13 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import com.maxtime.app.util.friendlyErrorMessage
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -126,41 +135,107 @@ fun AgeGateScreen(onContinue: () -> Unit) {
     }
 }
 
-private enum class AuthView { ENTRY, EMAIL, OTP }
+private enum class AuthView { ENTRY, OTP }
 
 @Composable
 fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
     var view by remember { mutableStateOf(AuthView.ENTRY) }
     var phone by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
     var otp by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var codeDeferred by remember { mutableStateOf<CompletableDeferred<String>?>(null) }
+    // Bumped once per SMS actually sent (initial send + every resend) — the countdown
+    // LaunchedEffect below is keyed on this rather than on `view`, since a resend tap doesn't
+    // change `view` (it's already AuthView.OTP) and so wouldn't otherwise restart the timer.
+    var otpAttempt by remember { mutableStateOf(0) }
+    var resendSecondsLeft by remember { mutableStateOf(0) }
+    // The in-flight verifyPhoneNumber coroutine, if any — tracked explicitly (rather than just
+    // firing scope.launch and forgetting it) so a resend or "Change number" tap can actually
+    // cancel a still-pending attempt instead of leaving it running in the background. Without
+    // this, a stale attempt for a number the user already backed out of could still complete
+    // later (e.g. Android's own-device SMS auto-verification) and silently call onVerified() —
+    // signing the user in under a phone number they explicitly chose to change.
+    var currentAttemptJob by remember { mutableStateOf<Job?>(null) }
 
     val scope = rememberCoroutineScope()
     val phoneAuthContext = rememberPhoneAuthContext()
     val authRepository = remember { AuthRepository() }
 
+    LaunchedEffect(otpAttempt) {
+        if (otpAttempt > 0) {
+            resendSecondsLeft = 30
+            while (resendSecondsLeft > 0) {
+                delay(1000)
+                resendSecondsLeft -= 1
+            }
+        }
+    }
+
     fun sendOtp() {
         errorText = null
         isLoading = true
-        scope.launch {
+        // Cancelling any still-running previous attempt (an earlier send/resend, or one left
+        // over from before a "Change number" trip) before starting a new one guarantees only
+        // ever one verifyPhoneNumber call is live at a time — never two racing to call
+        // onVerified() for two different phone numbers.
+        currentAttemptJob?.cancel()
+        currentAttemptJob = scope.launch {
             try {
                 val provider = buildPhoneVerificationProvider(phoneAuthContext) {
                     val deferred = CompletableDeferred<String>()
                     codeDeferred = deferred
                     view = AuthView.OTP
                     isLoading = false
+                    otpAttempt += 1
                     deferred.await()
                 }
                 authRepository.verifyPhoneNumber("+91$phone", provider)
                 onVerified()
+            } catch (e: CancellationException) {
+                // Deliberately cancelled (resend / change number) — not a real failure, so no
+                // error text and no isLoading reset (whatever superseded this already owns that).
+                throw e
             } catch (e: Exception) {
                 isLoading = false
-                errorText = e.message ?: "Something went wrong. Try again."
+                // Clearing the typed code lets the user immediately retry (e.g. after a wrong-code
+                // rejection) without manually deleting 6 digits first — the field keeps focus
+                // throughout since nothing here touches it, so the keyboard is still up and ready.
+                otp = ""
+                errorText = friendlyErrorMessage(e, "Something went wrong. Try again.")
             }
         }
+    }
+
+    // Resend re-runs the whole verifyPhoneNumber flow rather than threading Android's
+    // forceResendingToken through this shared abstraction — iOS's GitLive wrapper has no
+    // equivalent concept at all, so a token-based resend could only ever work on one platform.
+    // sendOtp() above cancels the superseded attempt, so there's never more than one listening.
+    fun resendOtp() {
+        otp = ""
+        sendOtp()
+    }
+
+    // Back to phone entry to fix a mistyped number. `phone` is untouched (still whatever was
+    // typed) so it's naturally prefilled for editing. Everything specific to the verification
+    // attempt in flight is torn down: the pending coroutine is cancelled (see sendOtp's comment
+    // — otherwise it could complete later and sign the user in under the number they just chose
+    // to change), its deferred is dropped so a stray submitOtp() call can't resolve into
+    // nothing, and the OTP/countdown/error state resets so returning to this step later (after
+    // re-sending) starts clean rather than showing stale leftovers. This is also what the top
+    // bar's own back arrow calls (not a bare `view = AuthView.ENTRY`) — that arrow used to skip
+    // all of this teardown entirely, which was the exact same "stale attempt could still sign
+    // the user in later" risk "Change number" was built to avoid, just reachable from a
+    // different button.
+    fun changeNumber() {
+        currentAttemptJob?.cancel()
+        currentAttemptJob = null
+        codeDeferred = null
+        otp = ""
+        errorText = null
+        isLoading = false
+        resendSecondsLeft = 0
+        view = AuthView.ENTRY
     }
 
     fun submitOtp() {
@@ -178,7 +253,7 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                 onGoogleSkip()
             } catch (e: Exception) {
                 isLoading = false
-                errorText = e.message ?: "Something went wrong. Try again."
+                errorText = friendlyErrorMessage(e, "Something went wrong. Try again.")
             }
         }
     }
@@ -187,29 +262,20 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
         topBar = {
             OnboardingProgressHeader(
                 step = 2,
-                onBack = if (view != AuthView.ENTRY) { { view = AuthView.ENTRY } } else null
+                onBack = if (view != AuthView.ENTRY) ::changeNumber else null
             )
-        },
-        bottomBar = {
-            BottomCta {
-                when (view) {
-                    AuthView.ENTRY -> {
-                        PrimaryButton(if (isLoading) "Sending…" else "Send OTP", onClick = ::sendOtp, enabled = !isLoading && phone.length == 10)
-                        OrDivider()
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            SecondaryButton("Email", Modifier.weight(1f), onClick = { view = AuthView.EMAIL })
-                            SecondaryButton("Continue as guest", Modifier.weight(1f), onClick = ::continueAsGuest)
-                        }
-                    }
-                    AuthView.EMAIL -> {
-                        PrimaryButton("Send code", onClick = { view = AuthView.OTP })
-                    }
-                    AuthView.OTP -> {
-                        PrimaryButton(if (isLoading) "Verifying…" else "Verify", onClick = ::submitOtp, enabled = !isLoading && otp.length == 6)
-                    }
-                }
-            }
         }
+        // Deliberately no bottomBar/BottomCta here — the CTA buttons are rendered inline, right
+        // after each view's field, instead of pinned to the screen's true bottom edge in a
+        // separately keyboard-aware sibling. That separate-sibling design is what caused every
+        // round of this screen's bugs (button-over-field overlap, shadow bleed onto the field
+        // above, a scroll/resize animation desync at the keyboard transition, and the dead gap
+        // between the field and the button) — all stemming from BottomCta needing its own
+        // independent keyboard-inset handling that never quite stayed in sync with the scrollable
+        // content next to it. Inline placement means the button is just the next item in the same
+        // scrollable Column as the field: it sits directly below it with ordinary padding, and
+        // follows the keyboard the same standard way any scrolled-into-view content does — no
+        // separate resize/inset logic to desync in the first place.
     ) {
         Text("Get you set up", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
 
@@ -246,31 +312,98 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                 errorText?.let {
                     Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
                 }
-            }
-            AuthView.EMAIL -> {
-                FieldLabel("Email address")
-                Box(
-                    Modifier.padding(horizontal = 24.dp).fillMaxWidth()
-                        .clip(MaxTimeShapes.medium).background(MaxTimeColors.cardBg)
-                        .border(1.dp, MaxTimeColors.cardBorder, MaxTimeShapes.medium)
-                        .padding(horizontal = 14.dp, vertical = 13.dp)
-                ) {
-                    MaxTimeTextField(email, { email = it }, "you@example.com", KeyboardType.Email)
-                }
+                PrimaryButton(
+                    if (isLoading) "Sending…" else "Send OTP",
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    onClick = ::sendOtp,
+                    enabled = !isLoading && phone.length == 10
+                )
+                OrDivider(Modifier.padding(horizontal = 24.dp))
+                // Plain underlined link, not a button — guest is the "skip for now" path, not a
+                // peer sign-in option, matching the same link styling as "Change number" /
+                // "Resend code" on the OTP step for a consistent visual language across this screen.
+                Text(
+                    "Continue as guest",
+                    color = MaxTimeColors.muted,
+                    fontSize = 13.sp,
+                    textDecoration = TextDecoration.Underline,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .clickable(onClick = ::continueAsGuest)
+                )
             }
             AuthView.OTP -> {
-                Text("Code sent to +91 $phone", style = MaxTimeType.body, modifier = Modifier.padding(horizontal = 24.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Code sent to +91 $phone",
+                        style = MaxTimeType.body,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        "Change number",
+                        color = MaxTimeColors.accent,
+                        fontSize = 12.sp,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.clickable(onClick = ::changeNumber)
+                    )
+                }
                 Box(
-                    Modifier.padding(horizontal = 24.dp, vertical = 10.dp).fillMaxWidth()
+                    // Fixed height for the same reason as the phone-number row above — inside
+                    // ScreenScaffold's verticalScroll, intrinsic sizing sees an effectively
+                    // infinite height constraint, so without a fixed height this box's rendered
+                    // height would shift depending on whether the field is empty or has content.
+                    Modifier.padding(horizontal = 24.dp, vertical = 10.dp).fillMaxWidth().height(52.dp)
                         .clip(MaxTimeShapes.medium).background(MaxTimeColors.cardBg)
                         .border(1.dp, MaxTimeColors.accent, MaxTimeShapes.medium)
                         .padding(horizontal = 14.dp, vertical = 13.dp)
                 ) {
-                    MaxTimeTextField(otp, { otp = it }, "6-digit code", KeyboardType.NumberPassword, maxLength = 6, digitsOnly = true)
+                    // Without an explicit size modifier, the underlying native view (UIKitView on
+                    // iOS, BasicTextField on Android) only lays out to wrap its placeholder text —
+                    // leaving the rest of this bordered box as inert decoration with a visibly
+                    // different background, and the actual tap/focus target shrunk down to just
+                    // that narrow patch instead of the whole field.
+                    OtpCodeInput(
+                        otp,
+                        { otp = it },
+                        onComplete = ::submitOtp,
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = "6-digit code",
+                        // otpAttempt bumps on the initial send AND every resend — re-requesting
+                        // focus each time is what actually lands the keyboard for a resent code,
+                        // not just the very first one.
+                        refocusTrigger = otpAttempt
+                    )
                 }
+                Text(
+                    if (resendSecondsLeft > 0) {
+                        "Resend code in 0:${resendSecondsLeft.toString().padStart(2, '0')}"
+                    } else {
+                        "Resend code"
+                    },
+                    color = if (resendSecondsLeft > 0) MaxTimeColors.muted else MaxTimeColors.accent,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .let { if (resendSecondsLeft == 0 && !isLoading) it.clickable(onClick = ::resendOtp) else it }
+                )
                 errorText?.let {
                     Text(it, color = MaxTimeColors.red, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
                 }
+                PrimaryButton(
+                    if (isLoading) "Verifying…" else "Verify",
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    onClick = ::submitOtp,
+                    enabled = !isLoading && otp.length == 6
+                )
             }
         }
     }
@@ -312,7 +445,7 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
                 photoUrl = url
                 state.currentUser = state.currentUser.copy(photoUrl = url)
             } catch (e: Exception) {
-                errorText = e.message ?: "Couldn't upload photo. Try again."
+                errorText = friendlyErrorMessage(e, "Couldn't upload photo. Try again.")
             } finally {
                 isUploadingPhoto = false
             }
@@ -336,7 +469,7 @@ fun ProfileScreen(state: AppState, onContinue: () -> Unit) {
                 onContinue()
             } catch (e: Exception) {
                 isSaving = false
-                errorText = e.message ?: "Couldn't save your profile. Try again."
+                errorText = friendlyErrorMessage(e, "Couldn't save your profile. Try again.")
             }
         }
     }
@@ -529,8 +662,8 @@ private fun FieldValueBox(text: String, onClick: (() -> Unit)? = null) {
 }
 
 @Composable
-private fun OrDivider() {
-    Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+private fun OrDivider(modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.weight(1f).height(1.dp).background(MaxTimeColors.cardBorder))
         Text("or continue with", color = MaxTimeColors.muted, fontSize = 11.sp)
         Box(Modifier.weight(1f).height(1.dp).background(MaxTimeColors.cardBorder))
@@ -548,9 +681,43 @@ private fun MaxTimeTextField(
 ) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // Disables the native Select/Select All edit menu for digits-only fields (phone/OTP) — no
+    // legitimate reason to select/copy/paste those, and on iOS specifically, calling
+    // focusManager.clearFocus() below (once the field is fully typed) can surface that menu as a
+    // residual artifact of the text-input session ending, overlapping the field's own label above
+    // it. Left untouched for non-digits fields (digitsOnly = false, e.g. name) — pasting copied
+    // text there is genuinely useful.
+    val defaultToolbar = androidx.compose.ui.platform.LocalTextToolbar.current
+    val noToolbar = remember {
+        object : androidx.compose.ui.platform.TextToolbar {
+            override val status: androidx.compose.ui.platform.TextToolbarStatus
+                get() = androidx.compose.ui.platform.TextToolbarStatus.Hidden
+            override fun showMenu(
+                rect: androidx.compose.ui.geometry.Rect,
+                onCopyRequested: (() -> Unit)?,
+                onPasteRequested: (() -> Unit)?,
+                onCutRequested: (() -> Unit)?,
+                onSelectAllRequested: (() -> Unit)?
+            ) = Unit
+            override fun hide() = Unit
+        }
+    }
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalTextToolbar provides if (digitsOnly) noToolbar else defaultToolbar
+    ) {
     Box {
         if (value.isEmpty()) {
-            Text(placeholder, color = MaxTimeColors.muted, fontSize = 13.5.sp)
+            // BasicText, not Text — Material's Text pulls in an ambient line-height from its
+            // typography system that BasicTextField's own raw textStyle below does not, so even
+            // at the identical fontSize the two don't share the same line metrics and visibly
+            // don't align vertically (the cursor renders above the placeholder digits). BasicText
+            // goes through the exact same foundation-level text layout as BasicTextField, with no
+            // Material inheritance, so an identical TextStyle here really does mean identical
+            // vertical positioning.
+            androidx.compose.foundation.text.BasicText(
+                placeholder,
+                style = TextStyle(color = MaxTimeColors.muted, fontSize = 13.5.sp)
+            )
         }
         BasicTextField(
             value = value,
@@ -582,5 +749,6 @@ private fun MaxTimeTextField(
             cursorBrush = androidx.compose.ui.graphics.SolidColor(MaxTimeColors.accent),
             modifier = Modifier.fillMaxWidth()
         )
+    }
     }
 }

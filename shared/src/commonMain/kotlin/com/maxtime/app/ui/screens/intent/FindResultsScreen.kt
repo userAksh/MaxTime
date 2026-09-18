@@ -27,6 +27,7 @@ import com.maxtime.app.data.Group
 import com.maxtime.app.data.Session
 import com.maxtime.app.data.StatusChipVariant
 import com.maxtime.app.data.sessionDateMatch
+import com.maxtime.app.ui.components.AvatarPerson
 import com.maxtime.app.ui.components.AvatarStack
 import com.maxtime.app.ui.components.BottomCta
 import com.maxtime.app.ui.components.MaxTimeCard
@@ -170,7 +171,10 @@ fun FindResultsScreen(state: AppState, router: Router) {
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         if (realGroup != null) {
-                            AvatarStack(realGroup.memberList.map { it.personName }.ifEmpty { listOf(realGroup.creator) })
+                            AvatarStack(
+                                realGroup.memberList.map { AvatarPerson(it.personName, it.photoUrl) }
+                                    .ifEmpty { listOf(AvatarPerson(realGroup.creator)) }
+                            )
                         } else {
                             Text("Be the first to join", style = MaxTimeType.caption)
                         }
@@ -202,7 +206,7 @@ fun FindResultsScreen(state: AppState, router: Router) {
                     }
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        AvatarStack(listOf(person.name), size = 52.dp)
+                        AvatarStack(listOf(AvatarPerson(person.name)), size = 52.dp)
                         androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 6.dp))
                         androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(start = 6.dp)) {
                             Text(person.name, color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 14.sp)

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -35,6 +36,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -45,6 +47,7 @@ import com.maxtime.app.ui.theme.MaxTimeColors
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 
 @Composable
@@ -176,23 +179,60 @@ fun SectionLabel(title: String, modifier: Modifier = Modifier, actionText: Strin
     }
 }
 
+/** [photoUrl] is only ever non-null for the real signed-in user — every other name in this app
+ *  (invited members, "Ayesha"/"Guest" simulated co-members, discovery listings) is a fabricated
+ *  placeholder person with no real photo to show, so they always fall back to initials. */
+data class AvatarPerson(val name: String, val photoUrl: String? = null)
+
 @Composable
-fun AvatarStack(names: List<String>, modifier: Modifier = Modifier, size: Dp = 24.dp) {
+fun AvatarStack(people: List<AvatarPerson>, modifier: Modifier = Modifier, size: Dp = 24.dp) {
     Row(modifier) {
-        names.forEachIndexed { index, name ->
-            Box(
-                Modifier
+        people.forEachIndexed { index, person ->
+            AvatarCircle(
+                name = person.name,
+                photoUrl = person.photoUrl,
+                size = size,
+                showInitials = size >= 32.dp,
+                modifier = Modifier
                     .offset(x = if (index == 0) 0.dp else (-8).dp * index)
-                    .size(size)
-                    .clip(CircleShape)
                     .border(2.dp, MaxTimeColors.cardBg, CircleShape)
-                    .background(MaxTimeColors.accent),
-                contentAlignment = Alignment.Center
-            ) {
-                if (size >= 32.dp) {
-                    Text(name.take(1), color = MaxTimeColors.onAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+            )
+        }
+    }
+}
+
+/** The one place photo-vs-initials rendering logic lives — [MyProfileScreen], [AvatarStack], and
+ *  chat message bubbles all go through this rather than each reimplementing the fallback. */
+@Composable
+fun AvatarCircle(
+    name: String,
+    photoUrl: String?,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    showInitials: Boolean = true
+) {
+    Box(
+        modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(MaxTimeColors.accent),
+        contentAlignment = Alignment.Center
+    ) {
+        if (photoUrl != null) {
+            AsyncImage(
+                model = photoUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        } else if (showInitials) {
+            val initials = name.split(" ").mapNotNull { it.firstOrNull() }.take(2).joinToString("").uppercase()
+            Text(
+                initials.ifEmpty { name.take(1) },
+                color = MaxTimeColors.onAccent,
+                fontSize = if (size >= 48.dp) 24.sp else 10.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
         }
     }
 }

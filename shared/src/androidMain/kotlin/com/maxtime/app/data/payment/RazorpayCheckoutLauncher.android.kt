@@ -3,6 +3,7 @@ package com.maxtime.app.data.payment
 import android.app.Activity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import com.maxtime.app.util.friendlyErrorMessage
 import com.razorpay.Checkout
 import kotlinx.coroutines.CompletableDeferred
 import org.json.JSONObject
@@ -55,7 +56,7 @@ actual class RazorpayCheckoutLauncher(private val activity: Activity) {
         try {
             checkout.open(activity, options)
         } catch (e: Exception) {
-            RazorpayCheckoutBridge.onError(e.message ?: "Could not open the payment screen.")
+            RazorpayCheckoutBridge.onError(friendlyErrorMessage(e, "Could not open the payment screen."))
         }
 
         return deferred.await()

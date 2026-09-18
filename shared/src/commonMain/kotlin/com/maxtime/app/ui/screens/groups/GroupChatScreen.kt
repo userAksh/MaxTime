@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.ChatMessage
 import com.maxtime.app.data.firebase.ChatRepository
+import com.maxtime.app.ui.components.AvatarCircle
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.TopBar
 import com.maxtime.app.ui.nav.Router
@@ -60,7 +61,7 @@ fun GroupChatScreen(state: AppState, router: Router) {
         val text = draft
         if (text.isBlank()) return
         draft = ""
-        scope.launch { chatRepository.sendMessage(group.id, myId, state.currentUser.name, text) }
+        scope.launch { chatRepository.sendMessage(group.id, myId, state.currentUser.name, text, state.currentUser.photoUrl) }
     }
 
     ScreenScaffold(
@@ -92,7 +93,7 @@ fun GroupChatScreen(state: AppState, router: Router) {
             if (messages.isEmpty()) {
                 SystemEvent("No messages yet — say hello")
             } else {
-                messages.forEach { msg -> ChatBubble(msg.senderName, msg.text, fromMe = msg.senderId == myId) }
+                messages.forEach { msg -> ChatBubble(msg.senderName, msg.text, msg.photoUrl, fromMe = msg.senderId == myId) }
             }
             val remaining = group.openSlots
             SystemEvent("$remaining spot${if (remaining == 1) "" else "s"} remain${if (remaining == 1) "s" else ""}")
@@ -110,8 +111,15 @@ private fun SystemEvent(text: String) {
 }
 
 @Composable
-private fun ChatBubble(sender: String?, text: String, fromMe: Boolean) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (fromMe) Arrangement.End else Arrangement.Start) {
+private fun ChatBubble(sender: String?, text: String, photoUrl: String?, fromMe: Boolean) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = if (fromMe) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        if (!fromMe) {
+            AvatarCircle(name = sender ?: "?", photoUrl = photoUrl, size = 22.dp, modifier = Modifier.padding(end = 6.dp))
+        }
         Box(
             Modifier
                 .clip(RoundedCornerShape(14.dp))
@@ -125,6 +133,9 @@ private fun ChatBubble(sender: String?, text: String, fromMe: Boolean) {
                 }
                 Text(text, color = if (fromMe) MaxTimeColors.onAccent else MaxTimeColors.text, fontSize = 12.5.sp, fontWeight = if (fromMe) FontWeight.SemiBold else FontWeight.Normal)
             }
+        }
+        if (fromMe) {
+            AvatarCircle(name = sender ?: "?", photoUrl = photoUrl, size = 22.dp, modifier = Modifier.padding(start = 6.dp))
         }
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import com.maxtime.app.util.friendlyErrorMessage
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -98,6 +99,6 @@ actual suspend fun requestCurrentLocation(context: LocationContext): LocationRes
     } catch (e: SecurityException) {
         LocationResult.PermissionDenied
     } catch (e: Exception) {
-        LocationResult.Error(e.message ?: "Location request failed.")
+        LocationResult.Error(friendlyErrorMessage(e, "Location request failed."))
     }
 }

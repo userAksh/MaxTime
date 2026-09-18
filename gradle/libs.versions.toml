@@ -17,6 +17,8 @@ play-services-location = "21.4.0"
 maps-compose = "8.4.0"
 razorpay-checkout = "1.6.40"
 compottie = "2.2.4"
+coil = "3.4.0"
+ktor = "3.1.0"
 
 [libraries]
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidx-activityCompose" }
@@ -35,6 +37,10 @@ play-services-location = { group = "com.google.android.gms", name = "play-servic
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "maps-compose" }
 razorpay-checkout = { group = "com.razorpay", name = "checkout", version.ref = "razorpay-checkout" }
 compottie = { group = "io.github.alexzhirkevich", name = "compottie", version.ref = "compottie" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-network-ktor = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil" }
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
