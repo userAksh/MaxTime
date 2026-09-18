@@ -1,6 +1,7 @@
 package com.maxtime.app.ui.screens.tabs
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,6 +54,23 @@ fun MyProfileScreen(state: AppState, router: Router) {
         val meta = listOfNotNull(user.phoneOrEmail, user.dateOfBirth?.let { "Born $it" }).joinToString("  ·  ")
         if (meta.isNotEmpty()) {
             Text(meta, style = MaxTimeType.caption, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 4.dp))
+        }
+
+        MaxTimeCard(
+            Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 6.dp),
+            onClick = { router.navigate(Screen.ReferAndEarn) }
+        ) {
+            androidx.compose.foundation.layout.Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                androidx.compose.foundation.layout.Column {
+                    Text("🎁 Refer & Earn", color = MaxTimeColors.textStrong, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                    Text("You get 20%, they get 10%", style = MaxTimeType.caption, modifier = Modifier.padding(top = 2.dp))
+                }
+                Text("›", color = MaxTimeColors.muted, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         SectionLabel("Location")

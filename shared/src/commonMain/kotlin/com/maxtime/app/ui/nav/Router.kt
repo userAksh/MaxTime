@@ -11,7 +11,8 @@ enum class Screen {
     FindWhat, FindWhen, FindWhenCustom, FindWhere, FindResults,
     ActivityDetail, VenueSessions, SessionDetail, PersonDetail, MatchRequest,
     CreateGroup, GroupDetail, GroupChat,
-    BookingReview, BookingSuccess
+    BookingReview, BookingSuccess,
+    ReferAndEarn
 }
 
 /** The 5 screens with a persistent bottom nav bar — every screen reachable directly from a tab. */

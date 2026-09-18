@@ -20,6 +20,7 @@ import com.maxtime.app.ui.screens.intent.FindWhenCustomScreen
 import com.maxtime.app.ui.screens.intent.FindWhenScreen
 import com.maxtime.app.ui.screens.intent.FindWhereScreen
 import com.maxtime.app.ui.screens.intent.HomeScreen
+import com.maxtime.app.ui.screens.referral.ReferAndEarnScreen
 import com.maxtime.app.ui.screens.tabs.DiscoverScreen
 import com.maxtime.app.ui.screens.tabs.GroupsScreen
 import com.maxtime.app.ui.screens.tabs.MyProfileScreen
@@ -53,6 +54,7 @@ fun RootScreenHost(state: AppState, router: Router) {
             Screen.GroupChat -> GroupChatScreen(state, router)
             Screen.BookingReview -> BookingReviewScreen(state, router)
             Screen.BookingSuccess -> BookingSuccessScreen(state, router)
+            Screen.ReferAndEarn -> ReferAndEarnScreen(router)
             else -> Unit
         }
     }
