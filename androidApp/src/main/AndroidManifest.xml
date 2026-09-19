@@ -14,6 +14,19 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
+        <!-- Grants other apps (WhatsApp, Instagram, Snapchat, etc.) temporary read access to a
+             generated referral share-card image written to this app's private cache dir — see
+             ShareLauncher.android.kt. A content:// URI, not the raw file path, is what's actually
+             handed to those apps' share intents. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backs the share-card FileProvider (see AndroidManifest.xml) — only the "shares" subfolder of
+     the app's private cache dir is exposed, matching where ShareLauncher.android.kt writes
+     generated share images. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="shares" path="shares/" />
+</paths>

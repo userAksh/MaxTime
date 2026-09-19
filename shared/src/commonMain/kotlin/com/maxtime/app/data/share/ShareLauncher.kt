@@ -13,4 +13,24 @@ expect fun rememberShareLauncher(): ShareLauncher
 
 expect class ShareLauncher {
     fun shareText(text: String)
+
+    /**
+     * Shares a rendered PNG image (a share-card, see ShareCardTemplate) plus an optional caption.
+     * [targetPackage] — Android only — jumps straight into that app (e.g. "com.whatsapp") instead
+     * of showing the OS chooser, matching how a dedicated per-app icon is expected to behave; iOS
+     * has no equivalent concept for `UIActivityViewController` (the person always picks from its
+     * sheet), so [targetPackage] is ignored there and it always shows the generic share sheet.
+     * Falls back to the generic share sheet if [targetPackage] is set but that app isn't
+     * installed — the image should never end up unshared just because one specific app is
+     * missing.
+     */
+    fun shareImage(pngBytes: ByteArray, caption: String? = null, targetPackage: String? = null)
+
+    /**
+     * Instagram Stories specifically needs its own mechanism, not a generic share intent — see
+     * this file's Android/iOS actuals for exactly how each platform does this (an explicit Intent
+     * extra on Android, a UIPasteboard handoff + URL scheme on iOS). Falls back to [shareImage]
+     * (the generic sheet) if Instagram isn't installed on that device.
+     */
+    fun shareToInstagramStories(pngBytes: ByteArray)
 }

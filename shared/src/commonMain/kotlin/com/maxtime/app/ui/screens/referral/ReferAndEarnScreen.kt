@@ -46,8 +46,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import org.jetbrains.compose.resources.imageResource
 import com.maxtime.app.data.firebase.ReferralCodeInfo
 import com.maxtime.app.data.firebase.ReferralFunctions
+import com.maxtime.app.data.share.encodeToPngBytes
 import com.maxtime.app.data.share.rememberShareLauncher
 import com.maxtime.app.ui.components.BackButton
 import com.maxtime.app.ui.components.ScreenScaffold
@@ -102,6 +118,316 @@ private sealed interface ReferAndEarnUiState {
     object Failed : ReferAndEarnUiState
 }
 
+/**
+ * Records the share-card directly into [graphicsLayer] every frame via raw [DrawScope] drawing —
+ * NOT by hosting a `ShareCardTemplate` composable and redirecting its `drawContent()` into the
+ * recorder. That was tried first (both via `Modifier.drawWithContent` and this exact low-level
+ * `Modifier.Node`/`DrawModifierNode` API) and confirmed, via a controlled isolation test on a
+ * real iOS device, to always capture nothing: swapping `this@draw.drawContent()` for a plain
+ * `drawRect(Color.Red)` in the exact same `record{}` block came through as a perfect solid red
+ * pixel, proving `record()`/`toImageBitmap()`/`readPixels()` all work correctly and the bug is
+ * specifically that `drawContent()` never redirects into this recording on this Skia backend.
+ * Direct `DrawScope` primitives are the one technique with actual on-device proof of working, so
+ * the whole card is drawn procedurally instead — real trade-off: this can't be laid out with
+ * normal Box/Column/Text like every other screen, positions are computed by hand below.
+ */
+private fun Modifier.recordShareCard(
+    graphicsLayer: GraphicsLayer,
+    textMeasurer: TextMeasurer,
+    highfiveImage: ImageBitmap,
+    code: String,
+    refereePercent: Int,
+    referrerPercent: Int,
+    // true = opaque, full-bleed 9:16 render for generic "Share via"/WhatsApp (those pipelines
+    // have no sticker concept and always flatten any transparency to a solid color, so matching
+    // the destination's own canvas ratio is the only way to avoid a letterboxed look there).
+    // false = a real transparent PNG with genuine rounded corners (alpha=0 outside the rounded
+    // rect), meant only for Instagram's sticker-sharing channel (see shareCardToInstagramStories)
+    // which is specifically designed to composite a transparent sticker over a generated
+    // background color/gradient — confirmed via Instagram's own "com.instagram.sharedSticker.
+    // stickerImage" pasteboard key and Meta's official Android "interactive_asset_uri" docs.
+    fullBleed: Boolean
+): Modifier = this then RecordShareCardElement(graphicsLayer, textMeasurer, highfiveImage, code, refereePercent, referrerPercent, fullBleed)
+
+private data class RecordShareCardElement(
+    private val graphicsLayer: GraphicsLayer,
+    private val textMeasurer: TextMeasurer,
+    private val highfiveImage: ImageBitmap,
+    private val code: String,
+    private val refereePercent: Int,
+    private val referrerPercent: Int,
+    private val fullBleed: Boolean
+) : ModifierNodeElement<RecordShareCardNode>() {
+    override fun create() = RecordShareCardNode(graphicsLayer, textMeasurer, highfiveImage, code, refereePercent, referrerPercent, fullBleed)
+    override fun update(node: RecordShareCardNode) {
+        node.graphicsLayer = graphicsLayer
+        node.textMeasurer = textMeasurer
+        node.highfiveImage = highfiveImage
+        node.code = code
+        node.refereePercent = refereePercent
+        node.referrerPercent = referrerPercent
+        node.fullBleed = fullBleed
+    }
+}
+
+private class RecordShareCardNode(
+    var graphicsLayer: GraphicsLayer,
+    var textMeasurer: TextMeasurer,
+    var highfiveImage: ImageBitmap,
+    var code: String,
+    var refereePercent: Int,
+    var referrerPercent: Int,
+    var fullBleed: Boolean
+) : Modifier.Node(), DrawModifierNode {
+    override fun ContentDrawScope.draw() {
+        graphicsLayer.record(
+            density = this,
+            layoutDirection = layoutDirection,
+            size = IntSize(size.width.toInt(), size.height.toInt())
+        ) {
+            if (fullBleed) {
+                drawShareCard(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
+            } else {
+                drawShareSticker(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
+            }
+        }
+        drawLayer(graphicsLayer)
+    }
+}
+
+/** Procedural re-implementation of the share card's visuals — see [recordShareCard]'s doc comment
+ *  for why this isn't a normal Box/Column/Text composable. Colors/sizes match what the card
+ *  looked like as a composable as closely as hand-computed positions reasonably allow; expect
+ *  this to need the same kind of visual nudging every other screen in this app got, now done by
+ *  adjusting the numbers below instead of Modifier chains. */
+private fun DrawScope.drawShareCard(
+    highfiveImage: ImageBitmap,
+    textMeasurer: TextMeasurer,
+    code: String,
+    refereePercent: Int,
+    referrerPercent: Int
+) {
+    // The captured canvas is now sized to Instagram/WhatsApp Stories' own 9:16 aspect ratio (see
+    // the Box in ReferAndEarnScreen that hosts this modifier) and this background fill covers it
+    // fully, edge to edge — no margin, no inset card. Earlier versions kept the on-screen 340x400
+    // (~4:5) card shape for the SHARED image too, so Instagram centered that image on its own
+    // black 9:16 canvas and letterboxed the rest with black — that black bar was Instagram's own
+    // canvas showing through, not anything drawn here, which is what actually produced the
+    // "floating rounded card in a rectangular container" look. Matching the destination's own
+    // aspect ratio removes the letterboxing entirely, which is the only real fix for that look.
+    drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF0E2413), Color(0xFF040B06))))
+
+    val padding = 28.dp.toPx()
+    // Both Instagram's and WhatsApp Status's own UI chrome (profile row, reply bar, progress
+    // bars) overlays roughly the top/bottom ~13% of the canvas regardless of what's in the image
+    // underneath — keeping content clear of that band is standard Stories-design practice, not
+    // specific to this app.
+    val safeZone = size.height * 0.13f
+
+    val imgWidth = size.width * 0.62f
+    val imgHeight = imgWidth * (highfiveImage.height.toFloat() / highfiveImage.width.toFloat())
+    val imgTop = safeZone + 24.dp.toPx()
+    drawImage(
+        image = highfiveImage,
+        dstOffset = IntOffset(
+            ((size.width - imgWidth) / 2f).toInt(),
+            imgTop.toInt()
+        ),
+        dstSize = IntSize(imgWidth.toInt(), imgHeight.toInt())
+    )
+
+    var cursorY = imgTop + imgHeight + 36.dp.toPx()
+
+    val headingLayout = textMeasurer.measure(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) { append("Let's do more ") }
+            withStyle(SpanStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.ExtraBold)) { append("together.") }
+        },
+        style = TextStyle(fontSize = 26.sp, lineHeight = 30.sp),
+        constraints = androidx.compose.ui.unit.Constraints(maxWidth = (size.width - padding * 2).toInt())
+    )
+    drawText(headingLayout, topLeft = Offset((size.width - headingLayout.size.width) / 2f, cursorY))
+    cursorY += headingLayout.size.height + 14.dp.toPx()
+
+    val subtitleLayout = textMeasurer.measure(
+        buildAnnotatedString {
+            append("Join me on MaxTime and get ")
+            withStyle(SpanStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.Bold)) { append("$refereePercent% off") }
+            append(" your first booking. I'll get ")
+            withStyle(SpanStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.Bold)) { append("$referrerPercent%") }
+            append(" too!")
+        },
+        style = TextStyle(color = Color(0xFFD8E0D8), fontSize = 14.sp, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+        constraints = androidx.compose.ui.unit.Constraints(maxWidth = (size.width - padding * 2).toInt())
+    )
+    drawText(subtitleLayout, topLeft = Offset((size.width - subtitleLayout.size.width) / 2f, cursorY))
+
+    val footerHeight = 110.dp.toPx()
+    val footerLeft = padding
+    val footerWidth = size.width - padding * 2
+    val footerTop = size.height - safeZone - 24.dp.toPx() - footerHeight
+    drawRoundRect(
+        color = Color(0x1AFFFFFF),
+        topLeft = Offset(footerLeft, footerTop),
+        size = Size(footerWidth, footerHeight),
+        cornerRadius = CornerRadius(20.dp.toPx())
+    )
+
+    val footerPad = 18.dp.toPx()
+    var footerCursorY = footerTop + footerPad
+    val footerContentLeft = footerLeft + footerPad
+
+    val maxTimeLayout = textMeasurer.measure(
+        AnnotatedString("MaxTime"),
+        style = TextStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+    )
+    drawText(maxTimeLayout, topLeft = Offset(footerContentLeft, footerCursorY))
+    footerCursorY += maxTimeLayout.size.height + 2.dp.toPx()
+
+    val taglineLayout = textMeasurer.measure(
+        AnnotatedString("Real People. Active Lives."),
+        style = TextStyle(color = Color(0xFFB8C4B8), fontSize = 11.sp)
+    )
+    drawText(taglineLayout, topLeft = Offset(footerContentLeft, footerCursorY))
+
+    val codeChipLayout = textMeasurer.measure(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = Color(0xFFB8C4B8))) { append("Use code: ") }
+            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) { append(code) }
+        },
+        style = TextStyle(fontSize = 12.sp)
+    )
+    val chipPadH = 12.dp.toPx()
+    val chipPadV = 8.dp.toPx()
+    val chipSize = Size(codeChipLayout.size.width + chipPadH * 2, codeChipLayout.size.height + chipPadV * 2)
+    val chipLeft = footerLeft + footerWidth - footerPad - chipSize.width
+    val chipTop = footerTop + (footerHeight - chipSize.height) / 2f
+    drawRoundRect(
+        color = Color(0x33FFFFFF),
+        topLeft = Offset(chipLeft, chipTop),
+        size = chipSize,
+        cornerRadius = CornerRadius(10.dp.toPx()),
+        style = Stroke(width = 1.dp.toPx())
+    )
+    drawText(codeChipLayout, topLeft = Offset(chipLeft + chipPadH, chipTop + chipPadV))
+}
+
+/** A real transparent PNG with genuine rounded corners — everything outside the rounded rect is
+ *  left at the canvas's native alpha=0 (confirmed correct via on-device pixel diagnostics earlier
+ *  in this feature's development; the actual bug was never our transparency, it was
+ *  [ShareLauncher.shareToInstagramStories] using Instagram's "backgroundImage" pasteboard/intent
+ *  key, which Instagram itself always flattens to opaque, instead of the "stickerImage" key,
+ *  which is specifically designed to composite a transparent sticker over a generated background
+ *  color — see that function's doc comment). Meant only for the Instagram-Stories sticker share
+ *  path; [drawShareCard] (opaque, full-bleed) still covers generic "Share via"/WhatsApp, since
+ *  those have no sticker concept and always flatten transparency regardless of the key used. */
+private fun DrawScope.drawShareSticker(
+    highfiveImage: ImageBitmap,
+    textMeasurer: TextMeasurer,
+    code: String,
+    refereePercent: Int,
+    referrerPercent: Int
+) {
+    val corner = CornerRadius(28.dp.toPx())
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(Color(0xFF0E2413), Color(0xFF040B06))),
+        size = size,
+        cornerRadius = corner
+    )
+    drawRoundRect(
+        color = MaxTimeColors.accent.copy(alpha = 0.35f),
+        size = size,
+        cornerRadius = corner,
+        style = Stroke(width = 1.dp.toPx())
+    )
+
+    val padding = 26.dp.toPx()
+
+    val imgWidth = 150.dp.toPx()
+    val imgHeight = imgWidth * (highfiveImage.height.toFloat() / highfiveImage.width.toFloat())
+    drawImage(
+        image = highfiveImage,
+        dstOffset = IntOffset(
+            (size.width - imgWidth - padding + 6.dp.toPx()).toInt(),
+            (padding + 22.dp.toPx()).toInt()
+        ),
+        dstSize = IntSize(imgWidth.toInt(), imgHeight.toInt())
+    )
+
+    var cursorY = padding
+    val contentLeft = padding
+
+    val headingLayout = textMeasurer.measure(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) { append("Let's\n") }
+            withStyle(SpanStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.ExtraBold)) { append("do more\n") }
+            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) { append("together.") }
+        },
+        style = TextStyle(fontSize = 28.sp, lineHeight = 30.sp)
+    )
+    drawText(headingLayout, topLeft = Offset(contentLeft, cursorY))
+    cursorY += headingLayout.size.height + 16.dp.toPx()
+
+    val subtitleLayout = textMeasurer.measure(
+        buildAnnotatedString {
+            append("Join me on MaxTime and get\n")
+            withStyle(SpanStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.Bold)) { append("$refereePercent% off") }
+            append(" your first booking.\nI'll get ")
+            withStyle(SpanStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.Bold)) { append("$referrerPercent%") }
+            append(" too!")
+        },
+        style = TextStyle(color = Color(0xFFD8E0D8), fontSize = 13.sp, lineHeight = 18.sp),
+        constraints = androidx.compose.ui.unit.Constraints(maxWidth = (size.width - padding * 2).toInt())
+    )
+    drawText(subtitleLayout, topLeft = Offset(contentLeft, cursorY))
+
+    val footerHeight = 96.dp.toPx()
+    val footerTop = size.height - padding - footerHeight
+    drawRoundRect(
+        color = Color(0x1AFFFFFF),
+        topLeft = Offset(contentLeft, footerTop),
+        size = Size(size.width - padding * 2, footerHeight),
+        cornerRadius = CornerRadius(18.dp.toPx())
+    )
+
+    val footerPad = 14.dp.toPx()
+    var footerCursorY = footerTop + footerPad
+    val footerLeft = contentLeft + footerPad
+
+    val maxTimeLayout = textMeasurer.measure(
+        AnnotatedString("MaxTime"),
+        style = TextStyle(color = MaxTimeColors.accent, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+    )
+    drawText(maxTimeLayout, topLeft = Offset(footerLeft, footerCursorY))
+    footerCursorY += maxTimeLayout.size.height
+
+    val taglineLayout = textMeasurer.measure(
+        AnnotatedString("Real People. Active Lives."),
+        style = TextStyle(color = Color(0xFFB8C4B8), fontSize = 9.5.sp)
+    )
+    drawText(taglineLayout, topLeft = Offset(footerLeft, footerCursorY))
+    footerCursorY += taglineLayout.size.height + 8.dp.toPx()
+
+    val codeChipLayout = textMeasurer.measure(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = Color(0xFFB8C4B8))) { append("Use code: ") }
+            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) { append(code) }
+        },
+        style = TextStyle(fontSize = 10.sp)
+    )
+    val chipPadH = 10.dp.toPx()
+    val chipPadV = 6.dp.toPx()
+    val chipSize = Size(codeChipLayout.size.width + chipPadH * 2, codeChipLayout.size.height + chipPadV * 2)
+    drawRoundRect(
+        color = Color(0x33FFFFFF),
+        topLeft = Offset(footerLeft, footerCursorY),
+        size = chipSize,
+        cornerRadius = CornerRadius(10.dp.toPx()),
+        style = Stroke(width = 1.dp.toPx())
+    )
+    drawText(codeChipLayout, topLeft = Offset(footerLeft + chipPadH, footerCursorY + chipPadV))
+}
+
 @Composable
 fun ReferAndEarnScreen(router: Router) {
     val referralFunctions = remember { ReferralFunctions() }
@@ -127,6 +453,21 @@ fun ReferAndEarnScreen(router: Router) {
     fun referralText(code: String, refereePercent: Int, refereeCap: Int): String =
         "Join me on MaxTime! Use my code $code to get $refereePercent% off your first booking " +
             "(up to ₹$refereeCap) — once you complete it, I get a reward too 🎉"
+
+    // The actual share-card pixels, drawn procedurally (see drawShareCard's doc comment for why)
+    // into this graphicsLayer every frame — real per-user code/percentages, not a bundled
+    // flattened image. Only converted to real bytes — via toImageBitmap() + encodeToPngBytes() —
+    // the moment someone taps a share action, not continuously.
+    val graphicsLayer = rememberGraphicsLayer()
+    // Separate layer/canvas for the Instagram-Stories sticker render (drawShareSticker) — it's a
+    // different size and a different, genuinely transparent image, not just a different fill
+    // color on the same canvas, so it needs its own GraphicsLayer to record into.
+    val stickerGraphicsLayer = rememberGraphicsLayer()
+    val textMeasurer = rememberTextMeasurer()
+    val highfiveImage = imageResource(Res.drawable.refer_earn_highfive)
+
+    suspend fun renderShareCardPng(): ByteArray = graphicsLayer.toImageBitmap().encodeToPngBytes()
+    suspend fun renderShareStickerPng(): ByteArray = stickerGraphicsLayer.toImageBitmap().encodeToPngBytes()
 
     Box(Modifier.fillMaxSize()) {
         ScreenScaffold {
@@ -238,29 +579,48 @@ fun ReferAndEarnScreen(router: Router) {
                 }
             }
 
+            fun shareCard(caption: String? = null, targetPackage: String? = null) {
+                if (code == null) return
+                scope.launch {
+                    val bytes = renderShareCardPng()
+                    shareLauncher.shareImage(bytes, caption = caption, targetPackage = targetPackage)
+                }
+            }
+
+            fun shareCardToInstagramStories() {
+                if (code == null) return
+                scope.launch { shareLauncher.shareToInstagramStories(renderShareStickerPng()) }
+            }
+
             Column(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding)) {
                 ShareReferralCodeButton(
                     enabled = code != null,
-                    onClick = { code?.let { shareLauncher.shareText(referralText(it, refereePercent, refereeCap)) } }
+                    onClick = { code?.let { shareCard(caption = referralText(it, refereePercent, refereeCap)) } }
                 )
                 Spacer(Modifier.height(20.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     QuickShareIcon(
                         label = "WhatsApp",
                         background = Color(0xFF2FCE5B),
-                        onClick = { code?.let { shareLauncher.shareText(referralText(it, refereePercent, refereeCap)) } }
+                        onClick = {
+                            code?.let {
+                                shareCard(caption = referralText(it, refereePercent, refereeCap), targetPackage = "com.whatsapp")
+                            }
+                        }
                     ) { WhatsAppGlyph(tint = Color.White) }
                     QuickShareIcon(
                         label = "Instagram",
                         background = Brush.linearGradient(
                             listOf(Color(0xFFFEDA75), Color(0xFFD62976), Color(0xFF4F5BD5))
                         ),
-                        onClick = { code?.let { shareLauncher.shareText(referralText(it, refereePercent, refereeCap)) } }
+                        // Instagram Stories has no caption/text field in this API — only the
+                        // image itself goes across, see ShareLauncher.shareToInstagramStories.
+                        onClick = { shareCardToInstagramStories() }
                     ) { InstagramGlyph() }
                     QuickShareIcon(
                         label = "Snapchat",
                         background = Color.Transparent,
-                        onClick = { code?.let { shareLauncher.shareText(referralText(it, refereePercent, refereeCap)) } }
+                        onClick = { shareCard(targetPackage = "com.snapchat.android") }
                     ) { SnapchatGlyph() }
                     QuickShareIcon(
                         label = "Copy Code",
@@ -275,7 +635,7 @@ fun ReferAndEarnScreen(router: Router) {
                     QuickShareIcon(
                         label = "More",
                         background = MaxTimeColors.cardBg,
-                        onClick = { code?.let { shareLauncher.shareText(referralText(it, refereePercent, refereeCap)) } }
+                        onClick = { code?.let { shareCard(caption = referralText(it, refereePercent, refereeCap)) } }
                     ) { MoreDotsGlyph(tint = MaxTimeColors.textStrong) }
                 }
             }
@@ -308,6 +668,41 @@ fun ReferAndEarnScreen(router: Router) {
                 Text("›", color = MaxTimeColors.muted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(20.dp))
+
+            // See drawShareCard's doc comment for the confirmed root cause this works around
+            // (drawContent() doesn't redirect into graphicsLayer.record() on this backend) — this
+            // draws the whole card procedurally instead of hosting a composable to capture. The
+            // opaque cover on top is still needed since this Box otherwise renders its real
+            // content (now correctly!) in this normal, non-hidden spot in the layout.
+            // Pushed off-screen horizontally rather than covered with an opaque box — the real
+            // screen background (MaxTimeColors.screenGradient) is a radial gradient, not a flat
+            // color, so a flat cover could never seamlessly match it at this scroll position
+            // (that mismatch was the visible dark seam in the earlier version). This keeps the
+            // card's real, correctly-sized footprint — still needed for the recording to work —
+            // while never actually painting anything inside the visible viewport at all, so
+            // there's no color-matching problem to solve in the first place.
+            // 360x640dp matches WhatsApp Status's own 9:16 canvas ratio (and, on a typical
+            // 3x-density phone, rasterizes to ~1080x1920px — its native resolution) — this is
+            // still correct for the generic "Share via"/WhatsApp path, which has no sticker
+            // concept and always flattens transparency, so matching the destination canvas is the
+            // only way to avoid letterboxing there.
+            Box(
+                Modifier
+                    .width(360.dp)
+                    .height(640.dp)
+                    .offset(x = 20000.dp)
+                    .recordShareCard(graphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, fullBleed = true)
+            )
+            // The Instagram-Stories sticker render — a real card shape (not 9:16), since
+            // Instagram positions/scales a sticker itself; matches the size hypd's own working
+            // Instagram-Stories sticker card uses.
+            Box(
+                Modifier
+                    .width(340.dp)
+                    .height(420.dp)
+                    .offset(x = 20000.dp, y = 700.dp)
+                    .recordShareCard(stickerGraphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, fullBleed = false)
+            )
         }
         SuccessToast(
             toastMessage ?: "",

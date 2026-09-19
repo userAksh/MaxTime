@@ -29,6 +29,13 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<!-- Lets canOpenURL(_:) detect Instagram for the Refer & Earn "share to Stories" flow
+	     (see ShareLauncher.ios.kt) — without this entry, canOpenURL always returns false for
+	     this scheme even when Instagram is installed, per iOS's query-scheme privacy rules. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram-stories</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>MaxTime uses your location to show nearby activities, open slots, and people up for the same thing.</string>
 	<key>UILaunchScreen</key>
