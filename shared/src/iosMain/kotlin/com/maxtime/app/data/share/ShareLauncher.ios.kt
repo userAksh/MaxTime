@@ -11,6 +11,8 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSURL
 import platform.Foundation.create
 import platform.Foundation.dateWithTimeIntervalSinceNow
+import platform.UIKit.UIActivityItemProvider
+import platform.UIKit.UIActivityType
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIImage
@@ -19,6 +21,31 @@ import platform.UIKit.UIPasteboardOptionExpirationDate
 import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow
 import platform.UIKit.UIWindowScene
+
+// Instagram's share-extension activity type — NOT documented by Meta anywhere; this exact string
+// is a long-standing community-observed value (widely reused across other apps' share-sheet
+// integrations) for the activity iOS reports when a person picks Instagram from a plain
+// UIActivityViewController sheet. It could silently stop matching after an Instagram app update —
+// if the Instagram-from-native-sheet card ever stops appearing, re-check this by logging
+// `itemForActivityType`'s actual value on a real device before assuming something else broke.
+private const val INSTAGRAM_SHARE_EXTENSION_ACTIVITY_TYPE = "com.burbn.instagram.shareextension"
+
+/** Lets [ShareLauncher.shareImage] hand Instagram a different, purpose-built image than every
+ *  other app in the same share sheet — see [ShareLauncher.shareImage]'s "instagramBytes" doc
+ *  comment for why. [UIActivityItemProvider] is the one API that defers the choice of item until
+ *  the OS already knows which app the person picked (via `itemForActivityType`), unlike a plain
+ *  array of activity items which is fixed before the sheet even opens. */
+@OptIn(ExperimentalForeignApi::class)
+private class InstagramAwareShareItem(
+    placeholder: UIImage,
+    private val defaultImage: UIImage,
+    private val instagramImage: UIImage
+) : UIActivityItemProvider(placeholderItem = placeholder) {
+    override fun activityViewController(
+        activityViewController: UIActivityViewController,
+        itemForActivityType: UIActivityType
+    ): Any? = if (itemForActivityType == INSTAGRAM_SHARE_EXTENSION_ACTIVITY_TYPE) instagramImage else defaultImage
+}
 
 actual class ShareLauncher {
     @OptIn(ExperimentalForeignApi::class)
@@ -29,13 +56,25 @@ actual class ShareLauncher {
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    actual fun shareImage(pngBytes: ByteArray, caption: String?, targetPackage: String?) {
+    actual fun shareImage(pngBytes: ByteArray, caption: String?, targetPackage: String?, instagramBytes: ByteArray?) {
         // targetPackage is an Android-only concept (setPackage on an Intent) — UIActivityViewController
         // has no equivalent "jump straight into this one app" mode, the person always picks from
         // its own sheet, so it's intentionally unused here.
         val root = topMostViewController() ?: return
         val image = UIImage(data = pngBytes.toNSData())
-        val items = if (caption != null) listOf(image, caption) else listOf(image)
+        // Every shareImage call goes through this same sheet on iOS (targetPackage is ignored),
+        // so Instagram can be picked from any of them — instagramBytes is passed on every call,
+        // not gated behind targetPackage == null the way Android's chooser-only branch is.
+        val imageItem: Any = if (instagramBytes != null) {
+            InstagramAwareShareItem(
+                placeholder = image,
+                defaultImage = image,
+                instagramImage = UIImage(data = instagramBytes.toNSData())
+            )
+        } else {
+            image
+        }
+        val items = if (caption != null) listOf(imageItem, caption) else listOf(imageItem)
         val activityController = UIActivityViewController(activityItems = items, applicationActivities = null)
         root.presentViewController(activityController, animated = true, completion = null)
     }

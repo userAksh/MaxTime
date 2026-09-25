@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -131,6 +132,20 @@ private sealed interface ReferAndEarnUiState {
  * the whole card is drawn procedurally instead — real trade-off: this can't be laid out with
  * normal Box/Column/Text like every other screen, positions are computed by hand below.
  */
+// FULL_BLEED = opaque, full-bleed 9:16 render for generic "Share via"/WhatsApp (those pipelines
+// have no sticker concept and always flatten any transparency to a solid color, so matching the
+// destination's own canvas ratio is the only way to avoid a letterboxed look there).
+// STICKER = a real transparent PNG with genuine rounded corners (alpha=0 outside the rounded
+// rect), meant only for Instagram's sticker-sharing channel (see shareCardToInstagramStories)
+// which is specifically designed to composite a transparent sticker over a generated background
+// color/gradient — confirmed via Instagram's own "com.instagram.sharedSticker.stickerImage"
+// pasteboard key and Meta's official Android "interactive_asset_uri" docs.
+// INSTAGRAM_SHEET = opaque, same STICKER-style card content but centered with a baked-in dark
+// margin on its own canvas, used ONLY when Instagram is the destination the person picks from the
+// plain native/generic share sheet (not the dedicated sticker button above) — see
+// drawShareCardForInstagramSheet's doc comment for why this needs its own render at all.
+private enum class ShareCardVariant { FULL_BLEED, STICKER, INSTAGRAM_SHEET }
+
 private fun Modifier.recordShareCard(
     graphicsLayer: GraphicsLayer,
     textMeasurer: TextMeasurer,
@@ -138,16 +153,8 @@ private fun Modifier.recordShareCard(
     code: String,
     refereePercent: Int,
     referrerPercent: Int,
-    // true = opaque, full-bleed 9:16 render for generic "Share via"/WhatsApp (those pipelines
-    // have no sticker concept and always flatten any transparency to a solid color, so matching
-    // the destination's own canvas ratio is the only way to avoid a letterboxed look there).
-    // false = a real transparent PNG with genuine rounded corners (alpha=0 outside the rounded
-    // rect), meant only for Instagram's sticker-sharing channel (see shareCardToInstagramStories)
-    // which is specifically designed to composite a transparent sticker over a generated
-    // background color/gradient — confirmed via Instagram's own "com.instagram.sharedSticker.
-    // stickerImage" pasteboard key and Meta's official Android "interactive_asset_uri" docs.
-    fullBleed: Boolean
-): Modifier = this then RecordShareCardElement(graphicsLayer, textMeasurer, highfiveImage, code, refereePercent, referrerPercent, fullBleed)
+    variant: ShareCardVariant
+): Modifier = this then RecordShareCardElement(graphicsLayer, textMeasurer, highfiveImage, code, refereePercent, referrerPercent, variant)
 
 private data class RecordShareCardElement(
     private val graphicsLayer: GraphicsLayer,
@@ -156,9 +163,9 @@ private data class RecordShareCardElement(
     private val code: String,
     private val refereePercent: Int,
     private val referrerPercent: Int,
-    private val fullBleed: Boolean
+    private val variant: ShareCardVariant
 ) : ModifierNodeElement<RecordShareCardNode>() {
-    override fun create() = RecordShareCardNode(graphicsLayer, textMeasurer, highfiveImage, code, refereePercent, referrerPercent, fullBleed)
+    override fun create() = RecordShareCardNode(graphicsLayer, textMeasurer, highfiveImage, code, refereePercent, referrerPercent, variant)
     override fun update(node: RecordShareCardNode) {
         node.graphicsLayer = graphicsLayer
         node.textMeasurer = textMeasurer
@@ -166,7 +173,7 @@ private data class RecordShareCardElement(
         node.code = code
         node.refereePercent = refereePercent
         node.referrerPercent = referrerPercent
-        node.fullBleed = fullBleed
+        node.variant = variant
     }
 }
 
@@ -177,7 +184,7 @@ private class RecordShareCardNode(
     var code: String,
     var refereePercent: Int,
     var referrerPercent: Int,
-    var fullBleed: Boolean
+    var variant: ShareCardVariant
 ) : Modifier.Node(), DrawModifierNode {
     override fun ContentDrawScope.draw() {
         graphicsLayer.record(
@@ -185,10 +192,10 @@ private class RecordShareCardNode(
             layoutDirection = layoutDirection,
             size = IntSize(size.width.toInt(), size.height.toInt())
         ) {
-            if (fullBleed) {
-                drawShareCard(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
-            } else {
-                drawShareSticker(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
+            when (variant) {
+                ShareCardVariant.FULL_BLEED -> drawShareCard(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
+                ShareCardVariant.STICKER -> drawShareSticker(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
+                ShareCardVariant.INSTAGRAM_SHEET -> drawShareCardForInstagramSheet(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
             }
         }
         drawLayer(graphicsLayer)
@@ -428,6 +435,34 @@ private fun DrawScope.drawShareSticker(
     drawText(codeChipLayout, topLeft = Offset(footerLeft + chipPadH, footerCursorY + chipPadV))
 }
 
+/** Instagram, when picked from the plain native/generic share sheet (as opposed to the dedicated
+ *  Instagram sticker button), receives a normal opaque image via its share extension — it has no
+ *  access to the sticker pasteboard API there, so it just imports whatever image it gets and
+ *  flattens/scales it as an ordinary attachment (see this file's earlier design-decision comment
+ *  for why that's a hard platform limit, not a bug in our code). Relying on Instagram's own
+ *  scaling to reproduce the "floating rounded card on a dark backdrop" look is exactly what
+ *  earlier produced the unpredictable letterboxing that [drawShareCard]'s full-bleed redesign
+ *  fixed — so instead of hoping any receiving app letterboxes this correctly, the margin is baked
+ *  directly into the exported pixels: this draws the exact same proven [drawShareSticker] card
+ *  (unchanged, still 340x420dp) centered via [inset] on a larger solid-filled canvas, so it always
+ *  looks the same no matter what app or preview surface displays it. */
+private fun DrawScope.drawShareCardForInstagramSheet(
+    highfiveImage: ImageBitmap,
+    textMeasurer: TextMeasurer,
+    code: String,
+    refereePercent: Int,
+    referrerPercent: Int
+) {
+    drawRect(color = Color(0xFF040B06))
+    val cardWidth = 340.dp.toPx()
+    val cardHeight = 420.dp.toPx()
+    val marginH = (size.width - cardWidth) / 2f
+    val marginV = (size.height - cardHeight) / 2f
+    inset(left = marginH, top = marginV, right = marginH, bottom = marginV) {
+        drawShareSticker(highfiveImage, textMeasurer, code, refereePercent, referrerPercent)
+    }
+}
+
 @Composable
 fun ReferAndEarnScreen(router: Router) {
     val referralFunctions = remember { ReferralFunctions() }
@@ -463,11 +498,16 @@ fun ReferAndEarnScreen(router: Router) {
     // different size and a different, genuinely transparent image, not just a different fill
     // color on the same canvas, so it needs its own GraphicsLayer to record into.
     val stickerGraphicsLayer = rememberGraphicsLayer()
+    // Separate again from both layers above — see drawShareCardForInstagramSheet's doc comment;
+    // this is the opaque "card with baked-in margin" render, used only when Instagram ends up
+    // being the destination someone picks from the plain native share sheet.
+    val instagramSheetGraphicsLayer = rememberGraphicsLayer()
     val textMeasurer = rememberTextMeasurer()
     val highfiveImage = imageResource(Res.drawable.refer_earn_highfive)
 
     suspend fun renderShareCardPng(): ByteArray = graphicsLayer.toImageBitmap().encodeToPngBytes()
     suspend fun renderShareStickerPng(): ByteArray = stickerGraphicsLayer.toImageBitmap().encodeToPngBytes()
+    suspend fun renderInstagramSheetCardPng(): ByteArray = instagramSheetGraphicsLayer.toImageBitmap().encodeToPngBytes()
 
     Box(Modifier.fillMaxSize()) {
         ScreenScaffold {
@@ -583,7 +623,12 @@ fun ReferAndEarnScreen(router: Router) {
                 if (code == null) return
                 scope.launch {
                     val bytes = renderShareCardPng()
-                    shareLauncher.shareImage(bytes, caption = caption, targetPackage = targetPackage)
+                    // Always rendered alongside the normal card, not just for the "More"/big
+                    // button path — on iOS targetPackage is ignored and every one of these calls
+                    // opens the same plain UIActivityViewController sheet, so Instagram can be
+                    // picked from ANY of them, not only the ones with targetPackage == null.
+                    val instagramBytes = renderInstagramSheetCardPng()
+                    shareLauncher.shareImage(bytes, caption = caption, targetPackage = targetPackage, instagramBytes = instagramBytes)
                 }
             }
 
@@ -691,7 +736,7 @@ fun ReferAndEarnScreen(router: Router) {
                     .width(360.dp)
                     .height(640.dp)
                     .offset(x = 20000.dp)
-                    .recordShareCard(graphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, fullBleed = true)
+                    .recordShareCard(graphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, ShareCardVariant.FULL_BLEED)
             )
             // The Instagram-Stories sticker render — a real card shape (not 9:16), since
             // Instagram positions/scales a sticker itself; matches the size hypd's own working
@@ -701,7 +746,17 @@ fun ReferAndEarnScreen(router: Router) {
                     .width(340.dp)
                     .height(420.dp)
                     .offset(x = 20000.dp, y = 700.dp)
-                    .recordShareCard(stickerGraphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, fullBleed = false)
+                    .recordShareCard(stickerGraphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, ShareCardVariant.STICKER)
+            )
+            // The Instagram-from-native-sheet render — see drawShareCardForInstagramSheet's doc
+            // comment. 420x580dp gives the same 340x420dp card a ~40dp horizontal / ~80dp
+            // vertical margin, baked into the exported pixels themselves.
+            Box(
+                Modifier
+                    .width(420.dp)
+                    .height(580.dp)
+                    .offset(x = 20000.dp, y = 1200.dp)
+                    .recordShareCard(instagramSheetGraphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, ShareCardVariant.INSTAGRAM_SHEET)
             )
         }
         SuccessToast(

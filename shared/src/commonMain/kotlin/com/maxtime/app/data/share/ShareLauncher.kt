@@ -23,8 +23,16 @@ expect class ShareLauncher {
      * Falls back to the generic share sheet if [targetPackage] is set but that app isn't
      * installed — the image should never end up unshared just because one specific app is
      * missing.
+     *
+     * [instagramBytes], if provided, is swapped in specifically when Instagram ends up being the
+     * destination someone picks from the plain native/generic share sheet — NOT the dedicated
+     * Instagram sticker button ([shareToInstagramStories]), which is a separate mechanism
+     * entirely. This exists because, unlike [targetPackage], you cannot know in advance which app
+     * a person will choose from an OS share sheet — each platform actual detects the choice at
+     * hand-off time (an `NSItemProvider`-style per-activity-type callback on iOS, a pinned
+     * targeted intent + excluded default resolution on Android) rather than up front.
      */
-    fun shareImage(pngBytes: ByteArray, caption: String? = null, targetPackage: String? = null)
+    fun shareImage(pngBytes: ByteArray, caption: String? = null, targetPackage: String? = null, instagramBytes: ByteArray? = null)
 
     /**
      * Instagram Stories specifically needs its own mechanism, not a generic share intent — see
