@@ -1,5 +1,6 @@
 package com.maxtime.app.data.firebase
 
+import com.maxtime.app.analytics.AnalyticsTracker
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.firestore.firestore
 import dev.gitlive.firebase.functions.FirebaseFunctionsException
@@ -17,6 +18,7 @@ private data class CreateBookingHoldRequest(
     val slotId: String,
     val participants: List<ParticipantPayload>,
     val idempotencyKey: String,
+    val appVersion: String,
 )
 
 @Serializable
@@ -50,7 +52,7 @@ class BookingFunctions {
         try {
             val result = Firebase.functions
                 .httpsCallable("createBookingHold")
-                .invoke(CreateBookingHoldRequest(slotId, participants, idempotencyKey))
+                .invoke(CreateBookingHoldRequest(slotId, participants, idempotencyKey, AnalyticsTracker.appVersion))
                 .data<BookingHoldResult>()
             BookingHoldOutcome.Held(result)
         } catch (e: FirebaseFunctionsException) {

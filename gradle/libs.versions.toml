@@ -12,10 +12,11 @@ kotlinx-coroutines = "1.10.2"
 firebase = "2.6.0"
 firebase-bom = "34.17.0"
 google-services = "4.5.0"
+crashlytics-gradle = "3.0.8"
 kotlinx-serialization = "1.11.0"
 play-services-location = "21.4.0"
 maps-compose = "8.4.0"
-razorpay-checkout = "1.6.40"
+razorpay-checkout = "1.6.56"
 compottie = "2.2.4"
 coil = "3.4.0"
 ktor = "3.1.0"
@@ -31,16 +32,24 @@ firebase-auth = { group = "dev.gitlive", name = "firebase-auth", version.ref = "
 firebase-firestore = { group = "dev.gitlive", name = "firebase-firestore", version.ref = "firebase" }
 firebase-storage = { group = "dev.gitlive", name = "firebase-storage", version.ref = "firebase" }
 firebase-functions = { group = "dev.gitlive", name = "firebase-functions", version.ref = "firebase" }
+firebase-crashlytics = { group = "dev.gitlive", name = "firebase-crashlytics", version.ref = "firebase" }
 kotlinx-serialization-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-core", version.ref = "kotlinx-serialization" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "play-services-location" }
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "maps-compose" }
-razorpay-checkout = { group = "com.razorpay", name = "checkout", version.ref = "razorpay-checkout" }
+# Depend on standard-core directly rather than the "checkout" umbrella artifact: checkout.aar
+# has no classes/resources of its own and just declares an AndroidManifest with
+# package="com.razorpay" — the same namespace standard-core's AAR uses, which newer AGP rejects
+# as a duplicate namespace. standard-core alone (pre-1.7.0, before Razorpay split PaymentData/
+# Checkout/etc. into a separate com.razorpay:core artifact that reintroduces the same collision)
+# provides every class checkout re-exported.
+razorpay-checkout = { group = "com.razorpay", name = "standard-core", version.ref = "razorpay-checkout" }
 compottie = { group = "io.github.alexzhirkevich", name = "compottie", version.ref = "compottie" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-ktor = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil" }
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -51,3 +60,4 @@ composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "k
 kotlinCocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 googleServices = { id = "com.google.gms.google-services", version.ref = "google-services" }
+crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "crashlytics-gradle" }

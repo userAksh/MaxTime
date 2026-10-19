@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.data.ACTIVITY_CATEGORIES
 import com.maxtime.app.data.AppState
 import com.maxtime.app.ui.components.BottomNav
@@ -26,6 +29,15 @@ import com.maxtime.app.ui.theme.MaxTimeType
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiscoverScreen(state: AppState, router: Router) {
+    LaunchedEffect(Unit) {
+        AnalyticsTracker.track(
+            AnalyticsEvent.ActivityFeedViewed(
+                categoryFilter = null,
+                areaId = state.location.area,
+                resultCount = ACTIVITY_CATEGORIES.values.sumOf { it.size },
+            )
+        )
+    }
     ScreenScaffold(
         topBar = {
             Text("Discover", style = MaxTimeType.heading, modifier = Modifier.padding(horizontal = MaxTimeSpacing.screenPadding, vertical = 8.dp))

@@ -52,6 +52,7 @@ Pods/
 functions/node_modules/
 functions/lib/
 functions/*.log
+functions/.env*
 
 # Claude Code local session state
 .claude/

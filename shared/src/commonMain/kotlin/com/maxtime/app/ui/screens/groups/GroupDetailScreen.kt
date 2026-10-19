@@ -24,6 +24,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.BookingStatus
 import com.maxtime.app.data.Group
@@ -54,6 +56,12 @@ fun GroupDetailScreen(state: AppState, router: Router) {
             state.justCreatedActivity = false
             showCreatedToast = true
         }
+    }
+    // A plain view — fires every time this screen is shown, whether the group was just created,
+    // just joined, or merely opened to look at. group_created/group_joined are the action events;
+    // this is deliberately not one of them.
+    LaunchedEffect(group.id) {
+        AnalyticsTracker.track(AnalyticsEvent.GroupDetailViewed(groupId = group.id, activityId = group.activity))
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -199,6 +207,10 @@ private fun ChatUnlockButton(router: Router) {
 @Composable
 private fun GroupFooter(state: AppState, group: Group, router: Router) {
     val scope = rememberCoroutineScope()
+    // Guards against a fast double-tap firing GroupJoined twice — addMember() itself is idempotent
+    // (checks membership before adding), but the analytics event isn't, so the click needs the
+    // guard, not just the underlying write.
+    var joining by remember { mutableStateOf(false) }
     BottomCta {
         when {
             group.effectiveStatus == GroupStatus.DEADLINE_MISSED -> {
@@ -254,8 +266,11 @@ private fun GroupFooter(state: AppState, group: Group, router: Router) {
                 } else {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         SecondaryButton("Not now", Modifier.weight(1f), onClick = { router.navigate(Screen.Home) })
-                        PrimaryButton("Join Group", Modifier.weight(1f), onClick = {
+                        PrimaryButton("Join Group", Modifier.weight(1f), enabled = !joining, onClick = {
+                            if (joining) return@PrimaryButton
+                            joining = true
                             state.joinGroup(group)
+                            AnalyticsTracker.track(AnalyticsEvent.GroupJoined(groupId = group.id, activityId = group.activity))
                             router.navigate(Screen.GroupChat)
                         })
                     }

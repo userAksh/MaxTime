@@ -4,6 +4,13 @@ import { db } from "./admin";
 import { writeAuditLog } from "./audit";
 import { qualifyReferralIfApplicable, redeemAppliedReward, revertAppliedReward } from "./referral";
 import { AttendanceStatus, Booking, BOOKING_TRANSITIONS, BookingStatus, Referral, ReferralReward } from "./types";
+import { trackBackendEvent } from "./analytics";
+
+const ATTENDANCE_TO_EVENT_NAME: Record<AttendanceStatus, string> = {
+  CHECKED_IN: "check_in_completed",
+  NO_SHOW: "no_show_recorded",
+  COMPLETED: "activity_attended",
+};
 
 const ATTENDANCE_TO_BOOKING_STATUS: Record<AttendanceStatus, BookingStatus> = {
   CHECKED_IN: "CHECKED_IN",
@@ -28,7 +35,7 @@ export const markAttendance = onCall(async (request) => {
   }
   const nextBookingStatus = ATTENDANCE_TO_BOOKING_STATUS[status];
 
-  await db.runTransaction(async (tx) => {
+  const capturedBooking: Booking = await db.runTransaction(async (tx) => {
     const bookingRef = db.collection("bookings").doc(bookingId);
     const bookingSnap = await tx.get(bookingRef);
     if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found.");
@@ -119,6 +126,16 @@ export const markAttendance = onCall(async (request) => {
         actor
       );
     }
+
+    return booking;
+  });
+
+  // Fired after the transaction has committed — never from inside the runTransaction callback.
+  trackBackendEvent(ATTENDANCE_TO_EVENT_NAME[status], capturedBooking.customerUserId, {
+    booking_id: bookingId,
+    category_id: capturedBooking.activityCategory,
+    service_id: capturedBooking.serviceId,
+    venue_id: capturedBooking.venueId,
   });
 
   return { ok: true };

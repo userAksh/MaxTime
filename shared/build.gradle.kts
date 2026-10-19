@@ -44,7 +44,9 @@ kotlin {
         // The app's own Swift/Xcode code still builds fully optimized under the Beta config; only
         // the KMP framework itself skips optimization. Revisit before Production ships.
         xcodeConfigurationToNativeBuildType["Beta"] = NativeBuildType.DEBUG
-        xcodeConfigurationToNativeBuildType["Production"] = NativeBuildType.RELEASE
+        // Production hits the exact same upstream bug (now reproducing on FirebaseStorage
+        // instead of FirebaseAuth) — pinned to DEBUG for the same reason as Beta above.
+        xcodeConfigurationToNativeBuildType["Production"] = NativeBuildType.DEBUG
 
         framework {
             baseName = "shared"
@@ -55,6 +57,7 @@ kotlin {
         pod("FirebaseFirestore")
         pod("FirebaseStorage")
         pod("FirebaseFunctions")
+        pod("FirebaseCrashlytics")
         // The pod's own framework is named RazorpayStandard, not razorpay-pod/razorpay_pod —
         // without this override Kotlin's cocoapods plugin guesses the wrong module name from the
         // pod name and cinterop generation fails with "module 'razorpay_pod' not found". packageName
@@ -114,7 +117,9 @@ kotlin {
             implementation(libs.firebase.firestore)
             implementation(libs.firebase.storage)
             implementation(libs.firebase.functions)
+            implementation(libs.firebase.crashlytics)
             implementation(libs.kotlinx.serialization.core)
+            implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

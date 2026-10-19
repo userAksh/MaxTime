@@ -1,5 +1,8 @@
 package com.maxtime.app.ui.screens.onboarding
 
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
+import com.maxtime.app.analytics.CrashReporter
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -125,6 +128,7 @@ fun SplashScreen(onGetStarted: () -> Unit) {
 
 @Composable
 fun AgeGateScreen(onContinue: () -> Unit) {
+    LaunchedEffect(Unit) { AnalyticsTracker.track(AnalyticsEvent.OnboardingStarted) }
     Column(Modifier.fillMaxSize()) {
         OnboardingProgressHeader(step = 1)
         Text(
@@ -171,6 +175,8 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
     val phoneAuthContext = rememberPhoneAuthContext()
     val authRepository = remember { AuthRepository() }
 
+    LaunchedEffect(Unit) { AnalyticsTracker.track(AnalyticsEvent.SignUpStarted) }
+
     LaunchedEffect(otpAttempt) {
         if (otpAttempt > 0) {
             resendSecondsLeft = 30
@@ -199,7 +205,12 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
                     otpAttempt += 1
                     deferred.await()
                 }
-                authRepository.verifyPhoneNumber("+91$phone", provider)
+                val result = authRepository.verifyPhoneNumber("+91$phone", provider)
+                result.user?.uid?.let {
+                    AnalyticsTracker.identify(it)
+                    CrashReporter.identify(it)
+                }
+                AnalyticsTracker.track(AnalyticsEvent.LoginCompleted())
                 onVerified()
             } catch (e: CancellationException) {
                 // Deliberately cancelled (resend / change number) — not a real failure, so no
@@ -259,6 +270,7 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
         scope.launch {
             try {
                 authRepository.signInAnonymously()
+                AnalyticsTracker.track(AnalyticsEvent.GuestModeEntered)
                 onGoogleSkip()
             } catch (e: Exception) {
                 isLoading = false
@@ -493,6 +505,9 @@ fun ReferralScreen(onContinue: () -> Unit) {
         scope.launch {
             when (val outcome = referralFunctions.redeemReferralCode(trimmed)) {
                 is RedeemReferralOutcome.Redeemed -> {
+                    AnalyticsTracker.track(
+                        AnalyticsEvent.ReferralCodeRedeemed(outcome = "success", alreadyAttributed = outcome.result.alreadyAttributed)
+                    )
                     appliedCode = trimmed
                     val percent = outcome.result.refereeDiscountPercent
                     val cap = outcome.result.refereeDiscountCapAmount
@@ -513,6 +528,7 @@ fun ReferralScreen(onContinue: () -> Unit) {
                     phase = ReferralCodePhase.VALID
                 }
                 is RedeemReferralOutcome.Rejected -> {
+                    AnalyticsTracker.track(AnalyticsEvent.ReferralCodeRedeemed(outcome = "rejected", alreadyAttributed = null))
                     errorText = outcome.message
                     phase = ReferralCodePhase.INVALID
                 }
@@ -715,6 +731,7 @@ fun InterestsScreen(state: AppState, onFinish: () -> Unit) {
 
     fun finishTapped() {
         state.interests = selected
+        AnalyticsTracker.track(AnalyticsEvent.OnboardingCompleted(stepsCompleted = 5))
         val uid = Firebase.auth.currentUser?.uid
         if (uid == null) {
             // No uid means no auth session at all — shouldn't be reachable this far into

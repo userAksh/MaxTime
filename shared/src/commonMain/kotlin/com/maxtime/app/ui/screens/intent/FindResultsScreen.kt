@@ -22,6 +22,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.Group
 import com.maxtime.app.data.Session
@@ -57,6 +59,7 @@ fun FindResultsScreen(state: AppState, router: Router) {
         sessions = state.sessionsFor()
         groups = state.groupsForActivity(state.intent.activity)
         sessionsLoading = false
+        AnalyticsTracker.track(AnalyticsEvent.GroupsViewed(activityId = state.intent.activity, resultCount = groups.size))
     }
     val people = state.eligiblePeopleForIntent()
     val connectedNames = remember(people) { people.filter { it.connected }.map { it.name }.toSet() }

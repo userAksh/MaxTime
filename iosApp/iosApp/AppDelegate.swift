@@ -1,6 +1,7 @@
 import UIKit
 import FirebaseCore
 import FirebaseAuth
+import shared
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -8,6 +9,23 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         FirebaseApp.configure()
+
+        // Environment derived from the bundle ID rather than a new Info.plist key — matches the
+        // existing per-scheme distinction (REVERSED_APP_ID_URL_SCHEME etc.) without adding a new
+        // config mechanism. One Mixpanel project across all three environments (see
+        // docs/analytics/dashboards-spec.md) — same token as Android's local.properties
+        // MIXPANEL_TOKEN, filtered by the `environment` property on each event instead of a
+        // separate project per build. Not a secret: Mixpanel's project token is write-only
+        // (ingest events, nothing else) and ships inside every client binary by design.
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        let environment = bundleId.hasSuffix(".staging") ? "staging" : (bundleId.hasSuffix(".beta") ? "beta" : "production")
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        AnalyticsTracker.shared.initialize(
+            platform: "ios",
+            appVersion: appVersion,
+            environment: environment,
+            mixpanelToken: "cf1724a8595ec5e120f39c7651869629"
+        )
         #if targetEnvironment(simulator)
         // The Simulator has no real APNs token; this lets phone-auth verification
         // proceed via the reCAPTCHA fallback instead of waiting on a silent push.

@@ -36,6 +36,8 @@ import com.maxtime.app.ui.components.TopBar
 import com.maxtime.app.ui.nav.Router
 import com.maxtime.app.ui.nav.Screen
 import com.maxtime.app.ui.theme.MaxTimeColors
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.ui.theme.MaxTimeShapes
 import com.maxtime.app.ui.theme.MaxTimeSpacing
 import com.maxtime.app.ui.theme.MaxTimeType
@@ -51,6 +53,21 @@ fun ActivityDetailScreen(state: AppState, router: Router) {
         sessionsLoading = true
         sessions = state.sessionsFor()
         sessionsLoading = false
+        val availabilityStatus = if (sessions.isNotEmpty()) "available" else "none"
+        AnalyticsTracker.track(
+            AnalyticsEvent.ActivityDetailViewed(
+                activityId = state.intent.activity,
+                categoryId = info.category,
+                priceMinor = info.price * 100,
+                currency = "INR",
+                availabilityStatus = availabilityStatus,
+            )
+        )
+        if (sessions.isEmpty()) {
+            AnalyticsTracker.track(
+                AnalyticsEvent.ActivitySearchNoResults(categoryId = info.category, areaId = state.location.area)
+            )
+        }
     }
 
     ScreenScaffold(

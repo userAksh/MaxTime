@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------------------------
+ * Design tokens mirror shared/src/commonMain/kotlin/com/maxtime/app/ui/theme/Theme.kt exactly —
+ * this is the same palette the native app uses (MaxTimeColors), not a new website-only identity.
+ * ------------------------------------------------------------------------------------------- */
+@theme {
+  --font-satoshi: "Satoshi", ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg-1: #0a0c07;
+  --color-bg-2: #10130a;
+  --color-bg-3: #15180f;
+  --color-bg-top: #1a2010;
+
+  --color-text-strong: #f6faec;
+  --color-text: #e3e9d4;
+  --color-muted: #8a9174;
+  --color-muted-2: #c6d1a4;
+
+  --color-accent: #c6ff3d;
+  --color-accent-2: #e2ff8e;
+  --color-accent-deep: #7fae10;
+  --color-accent-dim: #4d5c22;
+  --color-on-accent: #0c1005;
+
+  --color-card-bg: #12150c;
+  --color-card-border: #262c17;
+  --color-chip-border: #2a3018;
+
+  --color-red: #ff5a5f;
+  --color-amber: #ffb27a;
+}
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi_light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi_regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi_medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi_bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/satoshi_black.otf") format("opentype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body {
+  background: var(--color-bg-1);
+  color: var(--color-text);
+  font-family: var(--font-satoshi);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+/* Visible focus ring for keyboard navigation — never remove without replacing. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.text-balance {
+  text-wrap: balance;
+}

@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.data.location.AppContextHolder
 import com.maxtime.app.data.payment.RazorpayCheckoutBridge
 import com.razorpay.PaymentData
@@ -17,6 +18,12 @@ class MaxTimeApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppContextHolder.init(this)
+        AnalyticsTracker.initialize(
+            platform = "android",
+            appVersion = BuildConfig.VERSION_NAME,
+            environment = BuildConfig.ANALYTICS_ENVIRONMENT,
+            mixpanelToken = BuildConfig.MIXPANEL_TOKEN,
+        )
     }
 }
 

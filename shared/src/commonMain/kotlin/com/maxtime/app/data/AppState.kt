@@ -237,7 +237,8 @@ class AppState(
             creatorName = currentUser.name,
             info = info,
             priceIfDeadlineMissed = increasedPrice(info.price),
-            creatorPhotoUrl = currentUser.photoUrl
+            creatorPhotoUrl = currentUser.photoUrl,
+            creatorUid = Firebase.auth.currentUser?.uid
         )
     }
 
@@ -277,7 +278,7 @@ class AppState(
     /** Adds the current user to a group they found and are not yet part of (e.g. one surfaced
      *  by "Join a group" in Find Results) — distinct from [addPersonToMyGroup], which only ever
      *  operates on the caller's own group. */
-    fun joinGroup(g: Group): Group = groupRepository.addMember(g, currentUser.name)
+    fun joinGroup(g: Group): Group = groupRepository.addMember(g, currentUser.name, Firebase.auth.currentUser?.uid)
 
     suspend fun joinExistingGroup(): Group? {
         val sessions = sessionsFor(intent.activity)
@@ -288,7 +289,8 @@ class AppState(
             location = location,
             session = sess,
             info = info,
-            priceIfDeadlineMissed = increasedPrice(sess.price)
+            priceIfDeadlineMissed = increasedPrice(sess.price),
+            joinerUid = Firebase.auth.currentUser?.uid
         )
         selectedGroup = g
         return g

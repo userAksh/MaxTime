@@ -21,6 +21,12 @@
   },
   "hosting": [
     {
+      "target": "website",
+      "public": "website/out",
+      "cleanUrls": true,
+      "ignore": ["firebase.json", "**/.*"]
+    },
+    {
       "target": "admin-portal",
       "public": "admin-portal/out",
       "cleanUrls": true,

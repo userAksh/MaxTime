@@ -456,7 +456,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = SYZY6GZ623;
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
@@ -471,7 +471,8 @@
 				REVERSED_APP_ID_URL_SCHEME = "app-1-130636243911-ios-d067622960adf8cc782fe2";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				// iPhone-only: the Compose UI has only ever been run/tested on iPhone, never iPad.
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Production;
 		};

@@ -17,26 +17,36 @@ import com.maxtime.app.data.weekdayIndexOf
 interface GroupRepository {
     val groups: MutableMap<String, Group>
 
-    /** Invariant: one group per (activity, when, location) key. */
+    /** Invariant: one group per (activity, when, location) key. [creatorUid] is the real Firebase
+     *  Auth UID when known — see [Group.memberUids]'s doc comment for why. */
     fun getOrCreateMyGroup(
         intent: ActivityIntent,
         location: UserLocation,
         creatorName: String,
         info: ActivityInfo,
         priceIfDeadlineMissed: Int,
-        creatorPhotoUrl: String? = null
+        creatorPhotoUrl: String? = null,
+        creatorUid: String? = null
     ): Group
 
+    /** [joinerUid] — the real signed-in user who tapped into this unclaimed session — is tagged
+     *  into [Group.memberUids] even though the demo-seeded members ("Ayesha", "Guest") aren't,
+     *  so the real caller isn't locked out of their own group's chat/updates by the UID-based
+     *  firestore.rules membership check. Does not add them to the visible member list/count —
+     *  that cosmetic (fabricated membership) is a separate, pre-existing issue, not in scope here. */
     fun joinExistingGroup(
         intent: ActivityIntent,
         location: UserLocation,
         session: Session,
         info: ActivityInfo,
-        priceIfDeadlineMissed: Int
+        priceIfDeadlineMissed: Int,
+        joinerUid: String? = null
     ): Group
 
-    /** Invariant: only ever changes membership/status — never payment or booking state. */
-    fun addMember(group: Group, personName: String): Group
+    /** Invariant: only ever changes membership/status — never payment or booking state.
+     *  [personUid] is the real Firebase Auth UID when known (see [Group.memberUids]) — left null
+     *  for invite-by-name/simulated members, where no real UID exists to record. */
+    fun addMember(group: Group, personName: String, personUid: String? = null): Group
 
     /** Restores whatever groups [myName] created or joined before this app process started.
      *  A no-op for a purely in-memory implementation — there's nothing to restore from. */
@@ -62,7 +72,8 @@ class MockGroupRepository : GroupRepository {
         creatorName: String,
         info: ActivityInfo,
         priceIfDeadlineMissed: Int,
-        creatorPhotoUrl: String?
+        creatorPhotoUrl: String?,
+        creatorUid: String?
     ): Group {
         val key = "my-${intent.activity}-${intent.whenLabel}-${location.area}"
         groups[key]?.let { return it }
@@ -81,6 +92,7 @@ class MockGroupRepository : GroupRepository {
             icon = info.icon
         )
         g.memberList.add(GroupMember(creatorName, GroupMemberRole.CREATOR, "Just now", creatorPhotoUrl))
+        if (creatorUid != null) g.memberUids.add(creatorUid)
         groups[key] = g
         return g
     }
@@ -90,7 +102,8 @@ class MockGroupRepository : GroupRepository {
         location: UserLocation,
         session: Session,
         info: ActivityInfo,
-        priceIfDeadlineMissed: Int
+        priceIfDeadlineMissed: Int,
+        joinerUid: String?
     ): Group {
         val key = "open-${intent.activity}-${session.id}"
         groups[key]?.let { return it }
@@ -115,11 +128,12 @@ class MockGroupRepository : GroupRepository {
         g.memberList.add(GroupMember("Guest", GroupMemberRole.MEMBER, "Just now"))
         g.memberList.add(GroupMember("Guest", GroupMemberRole.MEMBER, "Just now"))
         g.connections.add("Ayesha")
+        if (joinerUid != null) g.memberUids.add(joinerUid)
         groups[key] = g
         return g
     }
 
-    override fun addMember(group: Group, personName: String): Group {
+    override fun addMember(group: Group, personName: String, personUid: String?): Group {
         // Enforced here, not just in the UI that hides the button — an invite accepted right at
         // the deadline shouldn't sneak someone in after joining has actually closed.
         if (group.isPastFillDeadline) return group
@@ -129,6 +143,7 @@ class MockGroupRepository : GroupRepository {
                 group.memberList.add(GroupMember(personName, GroupMemberRole.MEMBER, "Just now"))
             }
         }
+        if (personUid != null && personUid !in group.memberUids) group.memberUids.add(personUid)
         if (group.members >= group.capacity) group.status = GroupStatus.FULL
         return group
     }

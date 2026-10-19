@@ -7,6 +7,13 @@ import { db } from "./admin";
 import { revertAppliedReward } from "./referral";
 import { Booking, InventorySlot, PaymentStatus, Referral, ReferralReward } from "./types";
 import { razorpayWebhookSecret } from "./razorpay";
+import { trackBackendEvent } from "./analytics";
+
+type WebhookOutcome =
+  | { kind: "already-processed" }
+  | { kind: "booking-not-pending"; status: string }
+  | { kind: "confirmed"; booking: Booking; bookingId: string }
+  | { kind: "payment-failed"; booking: Booking; bookingId: string; rewardReverted: boolean };
 
 /**
  * §14/§25/§40 — Razorpay webhook. Everything below the signature check is unchanged from this
@@ -69,13 +76,11 @@ export const paymentWebhook = onRequest({ secrets: [razorpayWebhookSecret] }, as
   const status: "SUCCEEDED" | "FAILED" = event === "payment.captured" ? "SUCCEEDED" : "FAILED";
 
   try {
-    let outcome = "unknown";
-    await db.runTransaction(async (tx) => {
+    const outcome: WebhookOutcome = await db.runTransaction(async (tx) => {
       const paymentRef = db.collection("payments").doc(providerTransactionId);
       const existingPayment = await tx.get(paymentRef);
       if (existingPayment.exists) {
-        outcome = "already-processed";
-        return;
+        return { kind: "already-processed" };
       }
 
       const bookingQuery = await tx.get(
@@ -88,8 +93,7 @@ export const paymentWebhook = onRequest({ secrets: [razorpayWebhookSecret] }, as
       if (booking.status !== "PENDING_PAYMENT") {
         // Already resolved (expired, or a previous webhook attempt already landed) — do not
         // re-process, and specifically never re-release inventory that's already been settled.
-        outcome = `booking already ${booking.status}`;
-        return;
+        return { kind: "booking-not-pending", status: booking.status };
       }
 
       // Read now — before this transaction's first write below — regardless of whether this
@@ -117,7 +121,7 @@ export const paymentWebhook = onRequest({ secrets: [razorpayWebhookSecret] }, as
 
       if (paymentStatus === "SUCCEEDED") {
         tx.update(bookingRef, { status: "CONFIRMED", updatedAt: FieldValue.serverTimestamp() });
-        outcome = `booking ${bookingRef.id} -> CONFIRMED`;
+        return { kind: "confirmed", booking, bookingId: bookingRef.id };
       } else {
         // This attempt actually failed (not merely expired) — release the hold now rather than
         // waiting for expireStaleHolds, so the slot is immediately rebookable by someone else.
@@ -131,8 +135,8 @@ export const paymentWebhook = onRequest({ secrets: [razorpayWebhookSecret] }, as
           });
         }
         tx.update(bookingRef, { status: "PAYMENT_FAILED", updatedAt: FieldValue.serverTimestamp() });
-        outcome = `booking ${bookingRef.id} -> PAYMENT_FAILED`;
 
+        let rewardReverted = false;
         if (rewardSnap && referralSnap?.exists) {
           const referral = referralSnap.data() as Referral;
           revertAppliedReward(
@@ -143,11 +147,55 @@ export const paymentWebhook = onRequest({ secrets: [razorpayWebhookSecret] }, as
             "PAYMENT_FAILED",
             { userId: "system", role: "SYSTEM" }
           );
+          rewardReverted = true;
         }
+        return { kind: "payment-failed", booking, bookingId: bookingRef.id, rewardReverted };
       }
     });
 
-    logger.info("paymentWebhook processed", { event, providerTransactionId, orderId: paymentEntity.order_id, outcome });
+    logger.info("paymentWebhook processed", {
+      event,
+      providerTransactionId,
+      orderId: paymentEntity.order_id,
+      outcome: outcome.kind,
+    });
+
+    // Fired after the transaction has committed, using values captured from inside it — never
+    // from inside the runTransaction callback itself (see analytics.ts doc comment).
+    if (outcome.kind === "confirmed") {
+      const amountMinor = Math.round(outcome.booking.amount * 100);
+      trackBackendEvent("payment_succeeded", outcome.booking.customerUserId, {
+        booking_id: outcome.bookingId,
+        category_id: outcome.booking.activityCategory,
+        amount_minor: amountMinor,
+        currency: outcome.booking.currency,
+        provider: "razorpay",
+      });
+      trackBackendEvent("booking_confirmed", outcome.booking.customerUserId, {
+        booking_id: outcome.bookingId,
+        category_id: outcome.booking.activityCategory,
+        service_id: outcome.booking.serviceId,
+        venue_id: outcome.booking.venueId,
+        amount_minor: amountMinor,
+        currency: outcome.booking.currency,
+      });
+    } else if (outcome.kind === "payment-failed") {
+      const amountMinor = Math.round(outcome.booking.amount * 100);
+      trackBackendEvent("payment_failed", outcome.booking.customerUserId, {
+        booking_id: outcome.bookingId,
+        category_id: outcome.booking.activityCategory,
+        amount_minor: amountMinor,
+        currency: outcome.booking.currency,
+        provider: "razorpay",
+      });
+      if (outcome.rewardReverted) {
+        trackBackendEvent("referral_reward_reverted", outcome.booking.customerUserId, {
+          booking_id: outcome.bookingId,
+          reason: "PAYMENT_FAILED",
+        });
+      }
+    }
+
     res.status(200).send("ok");
   } catch (err) {
     logger.error("paymentWebhook processing error", {

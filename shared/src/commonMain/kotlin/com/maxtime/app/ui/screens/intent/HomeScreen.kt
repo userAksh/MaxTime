@@ -1,5 +1,7 @@
 package com.maxtime.app.ui.screens.intent
 
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
@@ -79,6 +81,7 @@ import kotlin.math.absoluteValue
 @Composable
 fun HomeScreen(state: AppState, router: Router) {
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { AnalyticsTracker.track(AnalyticsEvent.HomeViewed(entryPoint = "tab")) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(MaxTimeColors.screenGradient).statusBarsPadding()) {
             HomeTopBar()
@@ -153,6 +156,7 @@ fun HomeScreen(state: AppState, router: Router) {
                 selectedActivity = state.intent.activity,
                 infoFor = { state.activityInfo(it) },
                 onSelect = { activity ->
+                    AnalyticsTracker.track(AnalyticsEvent.HomeBannerTapped(activityId = activity, position = popular.indexOf(activity)))
                     state.intent = state.intent.copy(activity = activity)
                     router.navigate(Screen.FindWhen)
                 }

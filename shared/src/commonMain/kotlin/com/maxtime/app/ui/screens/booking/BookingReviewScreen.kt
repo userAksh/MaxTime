@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
+import com.maxtime.app.analytics.ParticipationMode
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.payment.RazorpayCheckoutRequest
 import com.maxtime.app.data.payment.RazorpayCheckoutResult
@@ -59,6 +63,26 @@ fun BookingReviewScreen(state: AppState, router: Router) {
     val fee = if (review.price > 0) (review.price * 0.06).roundToInt() else 0
     val total = review.price + fee
 
+    val participationMode = when {
+        state.selectedGroup?.let { it.creator == state.currentUser.name } == true -> ParticipationMode.GROUP_CREATE
+        state.selectedGroup != null -> ParticipationMode.GROUP_JOIN
+        else -> ParticipationMode.SOLO
+    }
+    val activitySessionId = state.selectedSession?.id ?: state.selectedGroup?.sessionId ?: state.selectedGroup?.id ?: "unknown"
+    LaunchedEffect(Unit) {
+        AnalyticsTracker.track(
+            AnalyticsEvent.BookingStarted(
+                activityId = review.activity,
+                categoryId = state.activityInfo(review.activity).category,
+                activitySessionId = activitySessionId,
+                participationMode = participationMode,
+                quantity = 1,
+                amountMinor = total * 100,
+                currency = "INR",
+            )
+        )
+    }
+
     ScreenScaffold(
         topBar = { TopBar(title = "Review Booking", onBack = { router.goBack() }) },
         bottomBar = {
@@ -88,6 +112,13 @@ fun BookingReviewScreen(state: AppState, router: Router) {
                             when (val step = state.confirmPayment()) {
                                 is AppState.ConfirmPaymentStep.ReadyForCheckout -> {
                                     busyLabel = null // hand off to Razorpay's own checkout UI
+                                    AnalyticsTracker.track(
+                                        AnalyticsEvent.PaymentStarted(
+                                            bookingId = step.bookingId,
+                                            amountMinor = total * 100,
+                                            currency = "INR",
+                                        )
+                                    )
                                     val contact = state.currentUser.phoneOrEmail
                                     val result = checkoutLauncher.launch(
                                         RazorpayCheckoutRequest(

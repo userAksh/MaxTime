@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 
 enum class Screen {
     Splash, AgeGate, Auth, Referral, Profile, Interests,
@@ -41,13 +43,17 @@ class Router(start: Screen = Screen.Splash) {
     val canGoBack: Boolean get() = backStack.isNotEmpty()
 
     fun navigate(screen: Screen) {
+        val previous = current
         backStack.add(current)
         current = screen
+        trackScreenView(previous)
     }
 
     fun goBack(): Boolean {
         if (backStack.isEmpty()) return false
+        val previous = current
         current = backStack.removeAt(backStack.lastIndex)
+        trackScreenView(previous)
         return true
     }
 
@@ -55,7 +61,15 @@ class Router(start: Screen = Screen.Splash) {
      *  discarded rather than pushed onto, so Back can't return into screens that are no longer
      *  valid (e.g. authenticated screens after a sign-out). */
     fun reset(screen: Screen) {
+        val previous = current
         backStack.clear()
         current = screen
+        trackScreenView(previous)
+    }
+
+    /** Single choke point for every screen transition in the app — see AnalyticsEvent.ScreenViewed's
+     *  doc comment for why this lives here instead of in each screen composable. */
+    private fun trackScreenView(previous: Screen) {
+        AnalyticsTracker.track(AnalyticsEvent.ScreenViewed(screenName = current.name, previousScreenName = previous.name))
     }
 }

@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.network.ktor3.KtorNetworkFetcherFactory
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
+import com.maxtime.app.analytics.CrashReporter
 import com.maxtime.app.data.AppPrefsKeys
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.LocalSettings
@@ -114,9 +117,16 @@ fun MaxTimeApp() {
     LaunchedEffect(Unit) {
         LocalSettings.putBoolean(AppPrefsKeys.HAS_LAUNCHED_BEFORE, true)
         if (hasStaleSession) {
+            // Reset BEFORE signing out, and before AppOpened fires below — otherwise AppOpened
+            // (and anything else in this cold start) would still carry whatever distinct_id was
+            // persisted from the now-invalid session, misattributing it to the previous account.
             Firebase.auth.signOut()
+            AnalyticsTracker.reset()
+            CrashReporter.reset()
+            AnalyticsTracker.track(AnalyticsEvent.AppOpened(entryPoint = "cold_start"))
             return@LaunchedEffect
         }
+        AnalyticsTracker.track(AnalyticsEvent.AppOpened(entryPoint = "cold_start"))
         val uid = Firebase.auth.currentUser?.uid
         if (uid != null) {
             val profileRepository = UserProfileRepository()

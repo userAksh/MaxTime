@@ -13,6 +13,9 @@
         ],
         "partner-portal": [
           "maxtime-partner"
+        ],
+        "website": [
+          "maxtime-app"
         ]
       }
     },

@@ -229,6 +229,10 @@ export interface Booking {
   id: string;
   slotId: string;
   serviceId: string;
+  /** Denormalized from InventorySlot.activityCategory at createBookingHold time — same pattern
+   *  as serviceId/venueId below. Exists so attendance/payment analytics (attendance.ts,
+   *  payments.ts, booking.ts) can report category breakdowns without an extra Firestore read. */
+  activityCategory: string;
   partnerId: string;
   venueId: string;
   customerUserId: string;

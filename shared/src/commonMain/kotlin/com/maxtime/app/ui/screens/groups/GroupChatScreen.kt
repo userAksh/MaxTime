@@ -12,8 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,9 +28,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.ChatMessage
+import com.maxtime.app.data.firebase.BlockedUsersRepository
 import com.maxtime.app.data.firebase.ChatRepository
+import com.maxtime.app.data.firebase.ModerationFunctions
+import com.maxtime.app.data.firebase.ReportReason
 import com.maxtime.app.ui.components.AvatarCircle
 import com.maxtime.app.ui.components.ScreenScaffold
 import com.maxtime.app.ui.components.TopBar
@@ -52,15 +63,31 @@ fun GroupChatScreen(state: AppState, router: Router) {
     val group = state.selectedGroup ?: state.getOrCreateMyGroup().also { state.selectedGroup = it }
     val myId = Firebase.auth.currentUser?.uid ?: state.currentUser.id
     val chatRepository = remember { ChatRepository() }
+    val moderationFunctions = remember { ModerationFunctions() }
+    val blockedUsersRepository = remember { BlockedUsersRepository() }
     val messagesFlow = remember(group.id) { chatRepository.observeMessages(group.id) }
-    val messages by messagesFlow.collectAsState(initial = emptyList<ChatMessage>())
+    val allMessages by messagesFlow.collectAsState(initial = emptyList<ChatMessage>())
+    val blockedIdsFlow = remember(myId) { blockedUsersRepository.observeBlockedUserIds(myId) }
+    val blockedIds by blockedIdsFlow.collectAsState(initial = emptySet<String>())
+    val messages = allMessages.filter { it.senderId !in blockedIds }
     var draft by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+
+    // Apple Guideline 1.2 (UGC safety) — report goes to the reportUser callable for an admin to
+    // review/act on; block is purely a local filter (see blockedIds above), never visible to the
+    // blocked user. Both are required alongside any user-to-user chat feature.
+    var reportTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    var blockTarget by remember { mutableStateOf<ChatMessage?>(null) }
+
+    LaunchedEffect(group.id) {
+        AnalyticsTracker.track(AnalyticsEvent.ChatOpened(groupId = group.id, activityId = group.activity))
+    }
 
     fun send() {
         val text = draft
         if (text.isBlank()) return
         draft = ""
+        AnalyticsTracker.track(AnalyticsEvent.ChatMessageSent(groupId = group.id, activityId = group.activity, messageLength = text.length))
         scope.launch { chatRepository.sendMessage(group.id, myId, state.currentUser.name, text, state.currentUser.photoUrl) }
     }
 
@@ -93,12 +120,76 @@ fun GroupChatScreen(state: AppState, router: Router) {
             if (messages.isEmpty()) {
                 SystemEvent("No messages yet — say hello")
             } else {
-                messages.forEach { msg -> ChatBubble(msg.senderName, msg.text, msg.photoUrl, fromMe = msg.senderId == myId) }
+                messages.forEach { msg ->
+                    ChatBubble(
+                        msg.senderName, msg.text, msg.photoUrl,
+                        fromMe = msg.senderId == myId,
+                        onReport = { reportTarget = msg },
+                        onBlock = { blockTarget = msg }
+                    )
+                }
             }
             val remaining = group.openSlots
             SystemEvent("$remaining spot${if (remaining == 1) "" else "s"} remain${if (remaining == 1) "s" else ""}")
         }
     }
+
+    reportTarget?.let { msg ->
+        ReportMessageDialog(
+            senderName = msg.senderName,
+            onDismiss = { reportTarget = null },
+            onConfirm = { reason ->
+                reportTarget = null
+                scope.launch {
+                    try {
+                        moderationFunctions.reportUser(group.id, msg.senderId, reason, msg.text)
+                    } catch (_: Exception) {
+                        // Best-effort — a failed report shouldn't crash the chat screen.
+                    }
+                }
+            }
+        )
+    }
+
+    blockTarget?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { blockTarget = null },
+            title = { Text("Block ${msg.senderName}?") },
+            text = { Text("You won't see their messages in this or any other group anymore. They won't be notified.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    blockTarget = null
+                    AnalyticsTracker.track(AnalyticsEvent.UserBlocked(groupId = group.id))
+                    scope.launch { blockedUsersRepository.blockUser(myId, msg.senderId) }
+                }) { Text("Block", color = MaxTimeColors.red, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { blockTarget = null }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun ReportMessageDialog(senderName: String, onDismiss: () -> Unit, onConfirm: (ReportReason) -> Unit) {
+    var selected by remember { mutableStateOf(ReportReason.SPAM) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Report $senderName") },
+        text = {
+            Column {
+                ReportReason.entries.forEach { reason ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { selected = reason }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = selected == reason, onClick = { selected = reason })
+                        Text(reason.label, fontSize = 13.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(selected) }) { Text("Report", color = MaxTimeColors.red, fontWeight = FontWeight.Bold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
@@ -111,7 +202,15 @@ private fun SystemEvent(text: String) {
 }
 
 @Composable
-private fun ChatBubble(sender: String?, text: String, photoUrl: String?, fromMe: Boolean) {
+private fun ChatBubble(
+    sender: String?,
+    text: String,
+    photoUrl: String?,
+    fromMe: Boolean,
+    onReport: () -> Unit = {},
+    onBlock: () -> Unit = {}
+) {
+    var showMenu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = if (fromMe) Arrangement.End else Arrangement.Start,
@@ -120,18 +219,27 @@ private fun ChatBubble(sender: String?, text: String, photoUrl: String?, fromMe:
         if (!fromMe) {
             AvatarCircle(name = sender ?: "?", photoUrl = photoUrl, size = 22.dp, modifier = Modifier.padding(end = 6.dp))
         }
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(if (fromMe) MaxTimeColors.accent else MaxTimeColors.cardBg)
-                .then(if (!fromMe) Modifier.border(1.dp, MaxTimeColors.cardBorder, RoundedCornerShape(14.dp)) else Modifier)
-                .padding(horizontal = 13.dp, vertical = 10.dp)
-        ) {
-            Column {
-                if (sender != null) {
-                    Text(sender, color = MaxTimeColors.accent2, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 3.dp))
+        Box {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (fromMe) MaxTimeColors.accent else MaxTimeColors.cardBg)
+                    .then(if (!fromMe) Modifier.border(1.dp, MaxTimeColors.cardBorder, RoundedCornerShape(14.dp)) else Modifier)
+                    .then(if (!fromMe) Modifier.clickable { showMenu = true } else Modifier)
+                    .padding(horizontal = 13.dp, vertical = 10.dp)
+            ) {
+                Column {
+                    if (sender != null) {
+                        Text(sender, color = MaxTimeColors.accent2, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 3.dp))
+                    }
+                    Text(text, color = if (fromMe) MaxTimeColors.onAccent else MaxTimeColors.text, fontSize = 12.5.sp, fontWeight = if (fromMe) FontWeight.SemiBold else FontWeight.Normal)
                 }
-                Text(text, color = if (fromMe) MaxTimeColors.onAccent else MaxTimeColors.text, fontSize = 12.5.sp, fontWeight = if (fromMe) FontWeight.SemiBold else FontWeight.Normal)
+            }
+            if (!fromMe) {
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(text = { Text("Report") }, onClick = { showMenu = false; onReport() })
+                    DropdownMenuItem(text = { Text("Block ${sender ?: "user"}") }, onClick = { showMenu = false; onBlock() })
+                }
             }
         }
         if (fromMe) {

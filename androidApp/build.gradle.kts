@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.googleServices)
+    alias(libs.plugins.crashlytics)
 }
 
 // MAPS_API_KEY=... in local.properties (gitignored) — never commit a real Maps key. Falls back to
@@ -13,6 +14,12 @@ val localProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY", "")
+
+// MIXPANEL_TOKEN=... in local.properties (gitignored) — one Mixpanel project across all three
+// build flavors (see docs/analytics/dashboards-spec.md), distinguished via the `environment`
+// property on each event rather than a separate token per flavor. AnalyticsTracker no-ops safely
+// on a blank token (fail open), so an empty value here is still a valid, shippable state.
+val mixpanelToken: String = localProperties.getProperty("MIXPANEL_TOKEN", "")
 
 // RELEASE_KEYSTORE_PASSWORD=... in local.properties (gitignored) — the keystore itself
 // (androidApp/keystore/release.keystore) is also gitignored; never commit either. This is just
@@ -54,6 +61,8 @@ android {
             dimension = "environment"
             applicationId = "com.maxtime.android"
             resValue("string", "app_name", "MaxTime")
+            buildConfigField("String", "ANALYTICS_ENVIRONMENT", "\"production\"")
+            buildConfigField("String", "MIXPANEL_TOKEN", "\"$mixpanelToken\"")
         }
         // Points at the maxtime-staging Firebase project. Day-to-day development builds —
         // installs alongside production/beta on the same device.
@@ -62,6 +71,8 @@ android {
             applicationId = "com.maxtime.android.staging"
             versionNameSuffix = "-staging"
             resValue("string", "app_name", "MaxTime Staging")
+            buildConfigField("String", "ANALYTICS_ENVIRONMENT", "\"staging\"")
+            buildConfigField("String", "MIXPANEL_TOKEN", "\"$mixpanelToken\"")
         }
         // Points at the maxtime-beta Firebase project. Pre-release testing (e.g. Play internal/closed tracks).
         create("beta") {
@@ -69,6 +80,8 @@ android {
             applicationId = "com.maxtime.android.beta"
             versionNameSuffix = "-beta"
             resValue("string", "app_name", "MaxTime Beta")
+            buildConfigField("String", "ANALYTICS_ENVIRONMENT", "\"beta\"")
+            buildConfigField("String", "MIXPANEL_TOKEN", "\"$mixpanelToken\"")
         }
     }
 
@@ -80,6 +93,7 @@ android {
     buildFeatures {
         compose = true
         resValues = true
+        buildConfig = true
     }
 }
 

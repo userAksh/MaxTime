@@ -5,6 +5,7 @@ import { db } from "./admin";
 import { writeAuditLog } from "./audit";
 import { revertAppliedReward, writeReferralEvent } from "./referral";
 import { Booking, BookingParticipant, InventorySlot, Referral, ReferralReward, Service } from "./types";
+import { trackBackendEvent } from "./analytics";
 
 const HOLD_MINUTES = 15;
 
@@ -40,6 +41,7 @@ export const createBookingHold = onCall(async (request) => {
   const participants = request.data?.participants as ParticipantInput[] | undefined;
   const idempotencyKey = request.data?.idempotencyKey as string;
   const applyReferralRewardId = request.data?.applyReferralRewardId as string | undefined;
+  const appVersion = request.data?.appVersion as string | undefined;
   if (!slotId || !idempotencyKey || !participants || participants.length < 1) {
     throw new HttpsError("invalid-argument", "slotId, a non-empty participants array, and idempotencyKey are required.");
   }
@@ -50,10 +52,10 @@ export const createBookingHold = onCall(async (request) => {
 
   const idemRef = db.collection("idempotency_keys").doc(idempotencyKey);
 
-  return db.runTransaction(async (tx) => {
+  const result = await db.runTransaction(async (tx) => {
     const idemSnap = await tx.get(idemRef);
     if (idemSnap.exists) {
-      return { bookingId: idemSnap.data()!.bookingId as string, alreadyExisted: true };
+      return { bookingId: idemSnap.data()!.bookingId as string, alreadyExisted: true as const };
     }
 
     const slotRef = db.collection("inventory_slots").doc(slotId);
@@ -157,6 +159,7 @@ export const createBookingHold = onCall(async (request) => {
     const booking: Omit<Booking, "id"> = {
       slotId,
       serviceId: slot.serviceId,
+      activityCategory: slot.activityCategory,
       partnerId: slot.partnerId,
       venueId: slot.venueId,
       customerUserId,
@@ -187,8 +190,38 @@ export const createBookingHold = onCall(async (request) => {
 
     tx.set(idemRef, { bookingId: bookingRef.id, createdAt: FieldValue.serverTimestamp() });
 
-    return { bookingId: bookingRef.id, alreadyExisted: false, amount, holdExpiresAtMillis: holdExpiresAt.toMillis() };
+    return {
+      bookingId: bookingRef.id,
+      alreadyExisted: false as const,
+      amount,
+      holdExpiresAtMillis: holdExpiresAt.toMillis(),
+      rewardApplied: !!rewardRef,
+      referralDiscountAmount,
+    };
   });
+
+  // Fired after the transaction has committed — never from inside the runTransaction callback
+  // itself (see analytics.ts doc comment). alreadyExisted means this call is a retry of an
+  // idempotency key that already landed, so the reward (if any) was already reported last time.
+  if (result.alreadyExisted) {
+    return { bookingId: result.bookingId, alreadyExisted: true };
+  }
+
+  if (result.rewardApplied) {
+    trackBackendEvent("referral_reward_applied", customerUserId, {
+      booking_id: result.bookingId,
+      reward_id: applyReferralRewardId,
+      discount_amount_minor: result.referralDiscountAmount != null ? Math.round(result.referralDiscountAmount * 100) : null,
+      app_version: appVersion,
+    });
+  }
+
+  return {
+    bookingId: result.bookingId,
+    alreadyExisted: false,
+    amount: result.amount,
+    holdExpiresAtMillis: result.holdExpiresAtMillis,
+  };
 });
 
 /**
@@ -208,12 +241,12 @@ export const expireStaleHolds = onSchedule("every 5 minutes", async () => {
 
   for (const doc of staleSnap.docs) {
     // eslint-disable-next-line no-await-in-loop
-    await db.runTransaction(async (tx) => {
+    const expired = await db.runTransaction(async (tx) => {
       const bookingRef = doc.ref;
       const bookingSnap = await tx.get(bookingRef);
-      if (!bookingSnap.exists) return;
+      if (!bookingSnap.exists) return null;
       const booking = bookingSnap.data() as Booking;
-      if (booking.status !== "PENDING_PAYMENT") return; // resolved concurrently, e.g. payment landed just now
+      if (booking.status !== "PENDING_PAYMENT") return null; // resolved concurrently, e.g. payment landed just now
 
       const slotRef = db.collection("inventory_slots").doc(booking.slotId);
       const slotSnap = await tx.get(slotRef);
@@ -233,6 +266,7 @@ export const expireStaleHolds = onSchedule("every 5 minutes", async () => {
       }
       tx.update(bookingRef, { status: "EXPIRED", updatedAt: FieldValue.serverTimestamp() });
 
+      let rewardReverted = false;
       if (rewardSnap && referralSnap?.exists) {
         const referral = referralSnap.data() as Referral;
         revertAppliedReward(
@@ -243,7 +277,26 @@ export const expireStaleHolds = onSchedule("every 5 minutes", async () => {
           "EXPIRED",
           { userId: "system", role: "SYSTEM" }
         );
+        rewardReverted = true;
       }
+
+      return { booking, bookingId: bookingRef.id, rewardReverted };
     });
+
+    // Fired after the transaction has committed — never from inside the runTransaction callback.
+    if (expired) {
+      trackBackendEvent("booking_expired", expired.booking.customerUserId, {
+        booking_id: expired.bookingId,
+        category_id: expired.booking.activityCategory,
+        amount_minor: Math.round(expired.booking.amount * 100),
+        currency: expired.booking.currency,
+      });
+      if (expired.rewardReverted) {
+        trackBackendEvent("referral_reward_reverted", expired.booking.customerUserId, {
+          booking_id: expired.bookingId,
+          reason: "EXPIRED",
+        });
+      }
+    }
   }
 });

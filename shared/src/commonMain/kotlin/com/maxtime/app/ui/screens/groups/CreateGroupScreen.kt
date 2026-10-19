@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.DURATION_OPTIONS
 import com.maxtime.app.data.TIME_SLOTS
@@ -68,18 +70,25 @@ fun CreateGroupScreen(state: AppState, router: Router) {
         mutableStateOf(requestedTime.takeIf { it in timeOptions } ?: timeOptions.first())
     }
     val chosenSlot = slots.firstOrNull { it.startTime == selectedTime }
+    // Guards against a fast double-tap firing GroupCreated twice — getOrCreateMyGroup() itself is
+    // idempotent (keyed, returns the existing group on a repeat call), but the analytics event
+    // isn't, so the click itself needs the guard, not just the underlying write.
+    var submitting by remember { mutableStateOf(false) }
 
     ScreenScaffold(
         topBar = { TopBar(title = "Start an Activity", onBack = { router.goBack() }) },
         bottomBar = {
             BottomCta {
-                PrimaryButton("Create activity", onClick = {
+                PrimaryButton("Create activity", enabled = !submitting, onClick = {
+                    if (submitting) return@PrimaryButton
+                    submitting = true
                     val label = chosenSlot?.let { "$dayLabel, ${it.startTime} – ${it.endTime}" } ?: "$dayLabel, $selectedTime"
                     state.intent = state.intent.copy(whenLabel = label, peopleNeeded = needed, durationMinutes = selectedDuration)
                     val g = state.getOrCreateMyGroup()
                     if (chosenSlot != null) state.confirmVenueSlot(g, chosenSlot)
                     state.selectedGroup = g
                     state.justCreatedActivity = true
+                    AnalyticsTracker.track(AnalyticsEvent.GroupCreated(groupId = g.id, activityId = g.activity))
                     router.navigate(Screen.GroupDetail)
                 })
             }

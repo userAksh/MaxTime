@@ -29,8 +29,19 @@ data class UserLocation(
     val radiusLabel: String get() = "$radiusKm km"
     val hasCoordinates: Boolean get() = latitude != null && longitude != null
 
-    fun kmAwayLabel(distanceKm: Double): String = if (hasCoordinates) "$distanceKm km away" else "distance unknown"
-    fun kmLabel(distanceKm: Double): String = if (hasCoordinates) "$distanceKm km" else "distance unknown"
+    // Rounds to 1 decimal place before formatting — a raw Double this small (e.g. a venue a few
+    // meters away) renders via Kotlin's default toString() as scientific notation ("1.48E-5"),
+    // which is what rounding here avoids, not just cosmetic decimal-place trimming.
+    fun kmAwayLabel(distanceKm: Double): String {
+        if (!hasCoordinates) return "distance unknown"
+        val rounded = kotlin.math.round(distanceKm * 10) / 10.0
+        return "$rounded km away"
+    }
+    fun kmLabel(distanceKm: Double): String {
+        if (!hasCoordinates) return "distance unknown"
+        val rounded = kotlin.math.round(distanceKm * 10) / 10.0
+        return "$rounded km"
+    }
 }
 
 /** What the user is currently searching for. Ephemeral, not persisted long-term. */
@@ -136,6 +147,13 @@ class Group(
     var priceNormal by mutableStateOf(priceNormal)
     var priceIfDeadlineMissed by mutableStateOf(priceIfDeadlineMissed)
     val connections = mutableStateListOf<String>()
+    /** Real Firebase Auth UIDs of members we actually know the identity of — the creator (at
+     *  creation) and anyone who joined via the real "Join Group" flow (AppState.joinGroup).
+     *  Deliberately NOT populated for invite-by-name/simulated members (no real UID exists for
+     *  them) — this list exists so Firestore security rules can verify membership by UID instead
+     *  of by [GroupMember.personName], which isn't a reliable identity check (names can collide
+     *  or change). See firestore.rules' groups/{groupId} rule. */
+    val memberUids = mutableStateListOf<String>()
 
     /** New members can join right up until exactly 2 hours before the confirmed start time —
      *  "—" until a venue/time is actually confirmed, since there's nothing real to count down to. */

@@ -51,6 +51,9 @@ private data class GroupDoc(
     val eventStartMinutes: Int? = null,
     val members: List<GroupMemberDoc> = emptyList(),
     val connections: List<String> = emptyList(),
+    /** Real Firebase Auth UIDs — see Group.memberUids' doc comment. What firestore.rules'
+     *  groups/{groupId} membership check actually reads. */
+    val memberUids: List<String> = emptyList(),
     /** Mirrors `members.map { it.personName }` — the only reason this is its own field is so
      *  Firestore can run an `array-contains` query on it directly ("groups I'm part of"). */
     val participantNames: List<String> = emptyList()
@@ -106,7 +109,8 @@ class FirestoreGroupRepository : GroupRepository {
         creatorName: String,
         info: ActivityInfo,
         priceIfDeadlineMissed: Int,
-        creatorPhotoUrl: String?
+        creatorPhotoUrl: String?,
+        creatorUid: String?
     ): Group {
         val key = "my-${intent.activity}-${intent.whenLabel}-${location.area}"
         groups[key]?.let { return it }
@@ -125,6 +129,7 @@ class FirestoreGroupRepository : GroupRepository {
             icon = info.icon
         )
         g.memberList.add(GroupMember(creatorName, GroupMemberRole.CREATOR, "Just now", creatorPhotoUrl))
+        if (creatorUid != null) g.memberUids.add(creatorUid)
         groups[key] = g
         save(g)
         return g
@@ -135,7 +140,8 @@ class FirestoreGroupRepository : GroupRepository {
         location: UserLocation,
         session: Session,
         info: ActivityInfo,
-        priceIfDeadlineMissed: Int
+        priceIfDeadlineMissed: Int,
+        joinerUid: String?
     ): Group {
         val key = "open-${intent.activity}-${session.id}"
         groups[key]?.let { return it }
@@ -160,12 +166,13 @@ class FirestoreGroupRepository : GroupRepository {
         g.memberList.add(GroupMember("Guest", GroupMemberRole.MEMBER, "Just now"))
         g.memberList.add(GroupMember("Guest", GroupMemberRole.MEMBER, "Just now"))
         g.connections.add("Ayesha")
+        if (joinerUid != null) g.memberUids.add(joinerUid)
         groups[key] = g
         save(g)
         return g
     }
 
-    override fun addMember(group: Group, personName: String): Group {
+    override fun addMember(group: Group, personName: String, personUid: String?): Group {
         // Enforced here, not just in the UI that hides the button — an invite accepted right at
         // the deadline shouldn't sneak someone in after joining has actually closed.
         if (group.isPastFillDeadline) return group
@@ -175,6 +182,7 @@ class FirestoreGroupRepository : GroupRepository {
                 group.memberList.add(GroupMember(personName, GroupMemberRole.MEMBER, "Just now"))
             }
         }
+        if (personUid != null && personUid !in group.memberUids) group.memberUids.add(personUid)
         if (group.members >= group.capacity) group.status = GroupStatus.FULL
         save(group)
         return group
@@ -203,6 +211,7 @@ class FirestoreGroupRepository : GroupRepository {
         g.eventStartMinutes = eventStartMinutes
         members.forEach { g.memberList.add(GroupMember(it.personName, GroupMemberRole.valueOf(it.role), it.joinedAt, it.photoUrl)) }
         g.connections.addAll(connections)
+        g.memberUids.addAll(memberUids)
         return g
     }
 
@@ -226,6 +235,7 @@ class FirestoreGroupRepository : GroupRepository {
         eventStartMinutes = eventStartMinutes,
         members = memberList.map { GroupMemberDoc(it.personName, it.role.name, it.joinedAt, it.photoUrl) },
         connections = connections.toList(),
+        memberUids = memberUids.toList(),
         participantNames = memberList.map { it.personName }
     )
 }
