@@ -14,7 +14,7 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
-        <!-- Grants other apps (WhatsApp, Instagram, Snapchat, etc.) temporary read access to a
+        <!-- Grants other apps (WhatsApp, Instagram, etc.) temporary read access to a
              generated referral share-card image written to this app's private cache dir — see
              ShareLauncher.android.kt. A content:// URI, not the raw file path, is what's actually
              handed to those apps' share intents. -->
@@ -31,10 +31,24 @@
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- App Links for referral share links (https://maxtime.in/r/<code>) — see
+                 website/public/.well-known/assetlinks.json and ReferralDeepLink.kt. autoVerify
+                 tells Android to check assetlinks.json at install time so this opens the app
+                 directly instead of a browser chooser dialog, same as iOS's Universal Links. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="maxtime.in"
+                    android:pathPrefix="/r/" />
             </intent-filter>
         </activity>
     </application>

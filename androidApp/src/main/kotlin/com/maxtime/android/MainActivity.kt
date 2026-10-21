@@ -1,6 +1,7 @@
 package com.maxtime.android
 
 import android.app.Application
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,6 +9,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.maxtime.app.analytics.AnalyticsTracker
+import com.maxtime.app.data.ReferralDeepLink
 import com.maxtime.app.data.location.AppContextHolder
 import com.maxtime.app.data.payment.RazorpayCheckoutBridge
 import com.razorpay.PaymentData
@@ -43,9 +45,22 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
         )
+        handleReferralIntent(intent)
         setContent {
             MaxTimeAppRoot()
         }
+    }
+
+    // App Links (singleTask launchMode in the manifest) redeliver here instead of creating a new
+    // Activity instance when the link is tapped while the app's already running in the
+    // background — see AndroidManifest.xml's autoVerify intent-filter.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleReferralIntent(intent)
+    }
+
+    private fun handleReferralIntent(intent: Intent?) {
+        intent?.data?.toString()?.let { ReferralDeepLink.handle(it) }
     }
 
     override fun onPaymentSuccess(razorpayPaymentId: String?, paymentData: PaymentData?) {

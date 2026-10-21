@@ -22,5 +22,6 @@ export {
   expireStaleReferrals,
   expireStaleRewards,
 } from "./referral";
+export { referralLandingPage } from "./referralLandingPage";
 export { deleteMyAccount } from "./account";
 export { reportUser } from "./moderation";

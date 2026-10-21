@@ -38,7 +38,7 @@ actual class ShareLauncher(private val activity: Activity) {
             targetPackage?.let { setPackage(it) }
         }
         // Only relevant when this is actually going to show a chooser (targetPackage == null) —
-        // a targeted share (WhatsApp/Snapchat's own icon) launches straight into that app with no
+        // a targeted share (e.g. WhatsApp's own icon) launches straight into that app with no
         // chooser at all, so Instagram can never be the destination there.
         if (targetPackage == null && instagramBytes != null) {
             try {
@@ -51,8 +51,22 @@ actual class ShareLauncher(private val activity: Activity) {
         try {
             activity.startActivity(if (targetPackage != null) intent else Intent.createChooser(intent, null))
         } catch (e: ActivityNotFoundException) {
-            // The requested app (e.g. WhatsApp/Snapchat) isn't installed — the image should still
-            // be shareable via whatever else is, not silently fail.
+            // The requested app (e.g. WhatsApp) isn't installed — the image should still be
+            // shareable via whatever else is, not silently fail.
+            intent.setPackage(null)
+            activity.startActivity(Intent.createChooser(intent, null))
+        }
+    }
+
+    actual fun shareLink(url: String, targetPackage: String?) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, url)
+            targetPackage?.let { setPackage(it) }
+        }
+        try {
+            activity.startActivity(if (targetPackage != null) intent else Intent.createChooser(intent, null))
+        } catch (e: ActivityNotFoundException) {
             intent.setPackage(null)
             activity.startActivity(Intent.createChooser(intent, null))
         }
@@ -78,29 +92,36 @@ actual class ShareLauncher(private val activity: Activity) {
         }
     }
 
-    actual fun shareToInstagramStories(pngBytes: ByteArray) {
-        val uri = writeShareImage(activity, pngBytes, "referral_share_sticker.png")
+    actual val instagramSharePickerIsNative: Boolean = true
+
+    actual fun shareToInstagram(opaqueBytes: ByteArray) {
+        val uri = writeShareImage(activity, opaqueBytes, "referral_share_instagram_direct.png")
         activity.grantUriPermission(INSTAGRAM_PACKAGE, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        val intent = Intent("com.instagram.share.ADD_TO_STORY").apply {
+        // Targeting Instagram's package directly (same "skip our own chooser, jump straight into
+        // that app" trick the WhatsApp icon already uses via targetPackage) launches Instagram's
+        // own ShareHandlerActivity — the exact same component excluded above in
+        // instagramAwareChooser — which shows Instagram's own Story/Post/Reel/Message picker.
+        // A plain ACTION_SEND image share, so opaqueBytes should come from the opaque,
+        // corner-radius-baked-in render (drawShareCardForInstagramSheet), not the transparent
+        // sticker one — this receiver has no sticker/pasteboard compositing concept at all.
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            setPackage(INSTAGRAM_PACKAGE)
             type = "image/png"
-            // interactive_asset_uri is Instagram/Meta's own sticker-asset key (confirmed via
-            // Meta's official Android Stories-sharing docs) — it already preserves this PNG's
-            // alpha channel, compositing it as a floating transparent sticker rather than
-            // flattening it, unlike a plain full-bleed background image. top_background_color/
-            // bottom_background_color fill the canvas around the sticker with this card's own
-            // gradient instead of Instagram's default. pngBytes here must come from
-            // drawShareSticker (real rounded corners, real transparent corners).
-            putExtra("interactive_asset_uri", uri)
-            putExtra("top_background_color", "#0E2413")
-            putExtra("bottom_background_color", "#040B06")
+            putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         try {
             activity.startActivity(intent)
         } catch (e: ActivityNotFoundException) {
-            shareImage(pngBytes, caption = null, targetPackage = null)
+            shareImage(opaqueBytes, caption = null, targetPackage = null, instagramBytes = null)
         }
     }
+
+    // The iOS-only per-destination entry point collapses to the same single call on Android,
+    // since instagramSharePickerIsNative == true here means the screen never actually invokes
+    // this — Instagram's own picker already covers Story/everything from one shareToInstagram
+    // call. Kept only to satisfy the expect/actual contract.
+    actual fun shareToInstagramStory(pngBytes: ByteArray) = shareToInstagram(pngBytes)
 }
 
 /** Writes into a private cache subfolder, not the public MediaStore gallery — unlike a common

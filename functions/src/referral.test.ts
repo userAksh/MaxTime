@@ -127,6 +127,69 @@ describe("referral state machines", () => {
   });
 });
 
+async function setReferralIdentity(uid: string, name: string, phoneNumber: string): Promise<void> {
+  await db.collection("users").doc(uid).set({ name, phoneNumber });
+  await auth.updateUser(uid, { phoneNumber });
+}
+
+async function deactivateAllReferralConfigs(): Promise<void> {
+  const snap = await db.collection("referral_configs").get();
+  await Promise.all(snap.docs.map((d) => d.ref.update({ active: false })));
+}
+
+describe("generateMyReferralCode", () => {
+  // The regression this guards against: production had zero referral_configs documents at all,
+  // so every single call failed with "Referral program is not currently active" — the whole
+  // feature was gated behind a document nobody had ever created. A referral code must exist for
+  // every user regardless of whether an admin has configured anything.
+  it("still generates a working code with built-in defaults when no referral_configs document is active", async () => {
+    await deactivateAllReferralConfigs();
+    const uid = await createTestUser();
+    await setReferralIdentity(uid, "Akshit", "+917895477553");
+
+    const result = (await generateMyReferralCode.run(fakeRequest({}, uid))) as {
+      code: string;
+      refereeDiscountPercent: number;
+      referrerDiscountPercent: number;
+    };
+
+    expect(result.code).toBe("AKS53");
+    expect(result.refereeDiscountPercent).toBe(10); // built-in default — no config doc exists
+    expect(result.referrerDiscountPercent).toBe(20);
+  });
+
+  it("derives the code from the first 3 letters of the first name + last 2 phone digits", async () => {
+    await seedActiveConfig();
+    const uid = await createTestUser();
+    await setReferralIdentity(uid, "Priya Verma", "+919876543210");
+
+    expect(await generateCode(uid)).toBe("PRI10");
+  });
+
+  it("pads a short/empty name rather than failing", async () => {
+    await seedActiveConfig();
+    const uid = await createTestUser();
+    await setReferralIdentity(uid, "Al", "+919876543299");
+
+    expect(await generateCode(uid)).toBe("ALM99"); // "AL" + "MXT" padding, truncated to 3 chars
+  });
+
+  it("appends a numeric suffix when two different users derive the same base code", async () => {
+    await seedActiveConfig();
+    const uidA = await createTestUser();
+    const uidB = await createTestUser();
+    // Same first name, different phone numbers that happen to share the same last 2 digits.
+    await setReferralIdentity(uidA, "Aman", "+911112223344");
+    await setReferralIdentity(uidB, "Aman", "+919998887744");
+
+    const codeA = await generateCode(uidA);
+    const codeB = await generateCode(uidB);
+
+    expect(codeA).toBe("AMA44");
+    expect(codeB).toBe("AMA441");
+  });
+});
+
 describe("redeemReferralCode", () => {
   beforeEach(async () => {
     await seedActiveConfig();

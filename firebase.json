@@ -24,7 +24,14 @@
       "target": "website",
       "public": "website/out",
       "cleanUrls": true,
-      "ignore": ["firebase.json", "**/.*"]
+      "ignore": ["firebase.json", "**/.*", "!**/.well-known/**"],
+      "rewrites": [{ "source": "/r/**", "function": "referralLandingPage" }],
+      "headers": [
+        {
+          "source": "/.well-known/apple-app-site-association",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
     },
     {
       "target": "admin-portal",

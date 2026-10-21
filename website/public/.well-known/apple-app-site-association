@@ -1,0 +1,18 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appID": "SYZY6GZ623.com.maxtime.ios",
+        "paths": ["/r/*"]
+      },
+      {
+        "appID": "SYZY6GZ623.com.maxtime.ios.staging",
+        "paths": ["/r/*"]
+      },
+      {
+        "appID": "SYZY6GZ623.com.maxtime.ios.beta",
+        "paths": ["/r/*"]
+      }
+    ]
+  }
+}

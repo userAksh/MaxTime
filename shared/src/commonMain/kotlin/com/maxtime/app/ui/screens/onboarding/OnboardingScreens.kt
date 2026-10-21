@@ -58,6 +58,7 @@ import com.maxtime.app.data.AppPrefsKeys
 import com.maxtime.app.data.AppState
 import com.maxtime.app.data.DEFAULT_SELECTED_INTERESTS
 import com.maxtime.app.data.LocalSettings
+import com.maxtime.app.data.ReferralDeepLink
 import com.maxtime.app.data.firebase.AuthRepository
 import com.maxtime.app.data.firebase.ReferralFunctions
 import com.maxtime.app.data.firebase.RedeemReferralOutcome
@@ -127,8 +128,11 @@ fun SplashScreen(onGetStarted: () -> Unit) {
 }
 
 @Composable
-fun AgeGateScreen(onContinue: () -> Unit) {
-    LaunchedEffect(Unit) { AnalyticsTracker.track(AnalyticsEvent.OnboardingStarted) }
+fun AgeGateScreen(isActive: Boolean = true, onContinue: () -> Unit) {
+    // Guarded on isActive — see OnboardingDeck's doc comment. Without this, OnboardingStarted
+    // fires the moment this screen is first peek-rendered behind Splash, before the user has
+    // actually reached (or even seen) it.
+    LaunchedEffect(Unit) { if (isActive) AnalyticsTracker.track(AnalyticsEvent.OnboardingStarted) }
     Column(Modifier.fillMaxSize()) {
         OnboardingProgressHeader(step = 1)
         Text(
@@ -151,7 +155,7 @@ fun AgeGateScreen(onContinue: () -> Unit) {
 private enum class AuthView { ENTRY, OTP }
 
 @Composable
-fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
+fun AuthScreen(isActive: Boolean = true, onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
     var view by remember { mutableStateOf(AuthView.ENTRY) }
     var phone by remember { mutableStateOf("") }
     var otp by remember { mutableStateOf("") }
@@ -175,7 +179,7 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
     val phoneAuthContext = rememberPhoneAuthContext()
     val authRepository = remember { AuthRepository() }
 
-    LaunchedEffect(Unit) { AnalyticsTracker.track(AnalyticsEvent.SignUpStarted) }
+    LaunchedEffect(Unit) { if (isActive) AnalyticsTracker.track(AnalyticsEvent.SignUpStarted) }
 
     LaunchedEffect(otpAttempt) {
         if (otpAttempt > 0) {
@@ -442,57 +446,23 @@ fun AuthScreen(onGoogleSkip: () -> Unit, onVerified: () -> Unit) {
  * ReferralCodeCard without needing to touch this screen's state/wiring at all.
  */
 @Composable
-fun ReferralScreen(onContinue: () -> Unit) {
-    var phase by remember { mutableStateOf(ReferralCodePhase.INPUT) }
+fun ReferralScreen(isActive: Boolean = true, onContinue: () -> Unit) {
+    // Starts in LOADING (field disabled, Skip disabled, button reads "Checking…") rather than
+    // INPUT — the initial LaunchedEffect below needs an async round trip (getMyReferralSummary,
+    // then possibly generateMyReferralCode) before it knows whether this user already has a
+    // referral, or arrived via a friend's link that's about to auto-fill and auto-submit. Letting
+    // the field be typable/skippable during that window meant a user could type a code or tap
+    // Skip into the moment a deep-link code was about to land, which looked like the field
+    // randomly filling itself in (or being skippable right as it mattered). The effect flips this
+    // to INPUT once it's confirmed there's nothing to auto-apply, or to VALID/LOADING (via
+    // submit()) once it finds something.
+    var phase by remember { mutableStateOf(ReferralCodePhase.LOADING) }
     var code by remember { mutableStateOf("") }
     var programInfo by remember { mutableStateOf<ReferralProgramInfo?>(null) }
     var appliedCode by remember { mutableStateOf<String?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val referralFunctions = remember { ReferralFunctions() }
-
-    LaunchedEffect(Unit) {
-        // Returning to this step after a valid referral was already established (app closed and
-        // reopened mid-onboarding, or the user swiped back and forward again) — reflect that
-        // immediately instead of showing a blank form for an already-decided step.
-        val alreadyLinked = try {
-            val summary = referralFunctions.getMyReferralSummary()
-            summary.asReferee
-        } catch (e: Exception) {
-            null // a failed summary read shouldn't block onboarding, only the "already linked" preview
-        }
-        if (alreadyLinked != null) {
-            appliedCode = alreadyLinked.code
-            val reward = alreadyLinked.refereeReward
-            if (reward != null) {
-                programInfo = ReferralProgramInfo(
-                    refereeDiscountPercent = reward.discountPercent ?: 0,
-                    refereeDiscountCapAmount = reward.discountCapAmount ?: 0,
-                    referrerDiscountPercent = 0 // not shown once already applied — see referralSubtitle's VALID branch
-                )
-            }
-            phase = ReferralCodePhase.VALID
-            return@LaunchedEffect
-        }
-
-        // Not yet linked — fetch the live admin-configured percentages for the prompt copy
-        // (never hardcode these client-side; they're admin-controlled server-side). Reuses
-        // generateMyReferralCode rather than a new endpoint — it also mints/returns this user's
-        // own shareable code as a side effect, which is harmless (every user gets one eventually
-        // anyway for sharing later).
-        try {
-            val info = referralFunctions.generateMyReferralCode()
-            programInfo = ReferralProgramInfo(
-                refereeDiscountPercent = info.refereeDiscountPercent,
-                refereeDiscountCapAmount = info.refereeDiscountCapAmount,
-                referrerDiscountPercent = info.referrerDiscountPercent
-            )
-        } catch (e: Exception) {
-            // Referral program not configured/active server-side, or a transient network issue —
-            // programInfo just stays null and the generic (no-numbers) copy shows instead. Must
-            // never block Continue/Skip just because this optional preview failed to load.
-        }
-    }
 
     fun submit() {
         val trimmed = code.trim()
@@ -536,8 +506,73 @@ fun ReferralScreen(onContinue: () -> Unit) {
         }
     }
 
+    LaunchedEffect(Unit) {
+        // This same screen instance is also composed as one of OnboardingDeck's non-interactive
+        // "peek" cards 1-2 steps before the user actually reaches it (see OnboardingDeck.kt's doc
+        // comment on screenContent) — without this guard, this effect's one-shot
+        // ReferralDeepLink.consume() fires while merely peeking, discarding the pending code
+        // before the user ever sees this screen for real. A later promotion to the real front
+        // card is a brand-new composable instance with its own fresh LaunchedEffect(Unit), so
+        // returning here only skips this peek instance, not the real run.
+        if (!isActive) return@LaunchedEffect
+
+        // Returning to this step after a valid referral was already established (app closed and
+        // reopened mid-onboarding, or the user swiped back and forward again) — reflect that
+        // immediately instead of showing a blank form for an already-decided step.
+        val alreadyLinked = try {
+            val summary = referralFunctions.getMyReferralSummary()
+            summary.asReferee
+        } catch (e: Exception) {
+            null // a failed summary read shouldn't block onboarding, only the "already linked" preview
+        }
+        if (alreadyLinked != null) {
+            appliedCode = alreadyLinked.code
+            val reward = alreadyLinked.refereeReward
+            if (reward != null) {
+                programInfo = ReferralProgramInfo(
+                    refereeDiscountPercent = reward.discountPercent ?: 0,
+                    refereeDiscountCapAmount = reward.discountCapAmount ?: 0,
+                    referrerDiscountPercent = 0 // not shown once already applied — see referralSubtitle's VALID branch
+                )
+            }
+            phase = ReferralCodePhase.VALID
+            return@LaunchedEffect
+        }
+
+        // Not yet linked — fetch the live admin-configured percentages for the prompt copy
+        // (never hardcode these client-side; they're admin-controlled server-side). Reuses
+        // generateMyReferralCode rather than a new endpoint — it also mints/returns this user's
+        // own shareable code as a side effect, which is harmless (every user gets one eventually
+        // anyway for sharing later).
+        try {
+            val info = referralFunctions.generateMyReferralCode()
+            programInfo = ReferralProgramInfo(
+                refereeDiscountPercent = info.refereeDiscountPercent,
+                refereeDiscountCapAmount = info.refereeDiscountCapAmount,
+                referrerDiscountPercent = info.referrerDiscountPercent
+            )
+        } catch (e: Exception) {
+            // Referral program not configured/active server-side, or a transient network issue —
+            // programInfo just stays null and the generic (no-numbers) copy shows instead. Must
+            // never block Continue/Skip just because this optional preview failed to load.
+        }
+
+        // Arrived here via a friend's shared link (https://maxtime.in/r/<code>, caught by the
+        // platform's Universal/App Link handler) rather than typing a code by hand — auto-fill
+        // and auto-submit so the referral flow is actually smooth end to end, not just "the link
+        // opened the right screen." consume() clears it, so this only ever fires once per link.
+        val deepLinkCode = ReferralDeepLink.consume()
+        if (deepLinkCode != null) {
+            code = deepLinkCode
+            submit()
+        } else {
+            // Nothing to auto-apply — only now is it safe to let the user actually type a code
+            // or tap Skip.
+            phase = ReferralCodePhase.INPUT
+        }
+    }
+
     ScreenScaffold(topBar = { OnboardingProgressHeader(step = 3) }) {
-        Spacer(Modifier.height(8.dp))
         ReferralCodeCard(
             phase = phase,
             code = code,

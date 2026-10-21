@@ -46,7 +46,16 @@ import kotlinx.coroutines.launch
 @Composable
 fun OnboardingDeck(
     router: Router,
-    screenContent: @Composable (Screen) -> Unit
+    // [Boolean] is true only for the actual front/current card, false for the two peek cards
+    // behind it. The peek cards render the real screen composable (not a lightweight preview) for
+    // the visual 3-card-stack effect — which means every screen's mount-time LaunchedEffect(Unit)
+    // genuinely runs while it's merely a background preview, 1-2 steps before the user has
+    // actually reached it. For a screen with only visual state this is harmless, but for one with
+    // real side effects (analytics events, or ReferralScreen's one-shot deep-link code consumption)
+    // it means those effects fire early and/or multiple times before the screen is ever actually
+    // interactive. Screens with such effects must gate them on this flag; see
+    // AgeGateScreen/AuthScreen/ReferralScreen for the pattern.
+    screenContent: @Composable (Screen, isActive: Boolean) -> Unit
 ) {
     val idx = onboardingOrder.indexOf(router.current)
     // Auth is the one step where "swipe forward" would skip something real instead of just an
@@ -96,12 +105,12 @@ fun OnboardingDeck(
     Box(Modifier.fillMaxSize().padding(34.dp)) {
         if (hasPeek2) {
             PeekCard(offsetX = (-24).dp, offsetY = (-24).dp, scale = 0.92f, rotationDeg = -3f, alpha = 0.85f) {
-                screenContent(next2Key!!)
+                screenContent(next2Key!!, false)
             }
         }
         if (hasPeek) {
             PeekCard(offsetX = (-13).dp, offsetY = (-13).dp, scale = 0.96f, rotationDeg = -1.5f, alpha = 0.9f) {
-                screenContent(nextKey)
+                screenContent(nextKey, false)
             }
         }
         DraggableFrontCard(
@@ -122,7 +131,7 @@ fun OnboardingDeck(
                 router.goBack()
             }
         ) {
-            screenContent(router.current)
+            screenContent(router.current, true)
         }
     }
 }

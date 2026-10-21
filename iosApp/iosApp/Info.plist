@@ -31,9 +31,11 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<!-- Lets canOpenURL(_:) detect Instagram for the Refer & Earn "share to Stories" flow
-	     (see ShareLauncher.ios.kt) — without this entry, canOpenURL always returns false for
-	     this scheme even when Instagram is installed, per iOS's query-scheme privacy rules. -->
+	<!-- Lets canOpenURL(_:) detect this app before attempting a one-tap deep link — without an
+	     entry here, canOpenURL always returns false for that scheme even when the app is
+	     installed, per iOS's query-scheme privacy rules. Covers ShareLauncher.ios.kt's
+	     shareToInstagramStory (instagram-stories://share) — no Photos permission needed, hands
+	     the image off via UIPasteboard, not the Photos library. -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>instagram-stories</string>

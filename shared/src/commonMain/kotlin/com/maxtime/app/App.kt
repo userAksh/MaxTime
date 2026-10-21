@@ -176,15 +176,16 @@ fun MaxTimeApp() {
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                OnboardingDeck(router) { screen ->
+                OnboardingDeck(router) { screen, isActive ->
                     when (screen) {
                         Screen.Splash -> SplashScreen(onGetStarted = { router.navigate(Screen.AgeGate) })
-                        Screen.AgeGate -> AgeGateScreen(onContinue = { router.navigate(Screen.Auth) })
+                        Screen.AgeGate -> AgeGateScreen(isActive = isActive, onContinue = { router.navigate(Screen.Auth) })
                         Screen.Auth -> AuthScreen(
+                            isActive = isActive,
                             onGoogleSkip = { scope.launch { router.navigate(resolvePostAuthDestination()) } },
                             onVerified = { scope.launch { router.navigate(resolvePostAuthDestination()) } }
                         )
-                        Screen.Referral -> ReferralScreen(onContinue = { router.navigate(Screen.Profile) })
+                        Screen.Referral -> ReferralScreen(isActive = isActive, onContinue = { router.navigate(Screen.Profile) })
                         Screen.Profile -> ProfileScreen(state, onContinue = { router.navigate(Screen.Interests) })
                         Screen.Interests -> InterestsScreen(state, onFinish = { router.navigate(Screen.Home) })
                         else -> Unit

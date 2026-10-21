@@ -27,8 +27,6 @@ import {
 // from Activity Invite and MaxCoins (different collections, no shared code paths). See
 // functions/src/types.ts for the full schema/state-machine doc comments.
 
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // excludes 0/O, 1/I/L
-const MAX_CODE_GENERATION_ATTEMPTS = 5;
 const MAX_FAILED_REDEMPTIONS_PER_WINDOW = 5;
 const FAILED_REDEMPTION_WINDOW_MS = 60 * 60 * 1000;
 
@@ -42,16 +40,48 @@ function isAdmin(request: { auth?: { token?: Record<string, unknown> } }): boole
   return request.auth?.token?.admin === true || request.auth?.token?.adminRole != null;
 }
 
-function randomCode(length: number): string {
-  let out = "";
-  for (let i = 0; i < length; i++) {
-    out += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  }
-  return out;
+// "MXT" (not a random letter) is the padding filler for a name with fewer than 3 letters (empty
+// name, emoji-only, etc.) — deliberately a real, neutral, on-brand string rather than a filler
+// that could accidentally spell something unintended.
+const NAME_PART_PADDING = "MXT";
+
+/** Deterministic base code: first 3 letters of the user's first name + last 2 digits of their
+ *  phone number (explicit product decision — not random, so it's personal/memorable, not an
+ *  opaque string). Collisions are expected and handled by the caller (see generateMyReferralCode)
+ *  by appending a number only when this exact base is already taken — most users get the clean
+ *  5-character code, a minority get one extra digit. */
+function deriveReferralCodeBase(name: string, phoneNumber: string | null | undefined): string {
+  const firstName = name.trim().split(/\s+/)[0] ?? "";
+  const lettersOnly = firstName.replace(/[^a-zA-Z]/g, "").toUpperCase();
+  const namePart = (lettersOnly + NAME_PART_PADDING).slice(0, 3);
+  const digitsOnly = (phoneNumber ?? "").replace(/[^0-9]/g, "");
+  const phonePart = digitsOnly.length >= 2 ? digitsOnly.slice(-2) : digitsOnly.padStart(2, "0");
+  return namePart + phonePart;
 }
 
+// V1 built-in defaults — used whenever no admin has configured a `referral_configs` document
+// (or none is currently active). The referral feature must work for every user out of the box;
+// an admin document is an optional override for the percentages/windows, never a precondition for
+// the feature existing at all. Matches the client's own FALLBACK_* constants in
+// ReferAndEarnScreen.kt, which were always meant to be shown if this call "fails" — the real fix
+// is this call no longer fails, not that the client silently guesses instead.
+const DEFAULT_REFERRAL_CONFIG: Omit<ReferralConfig, "id" | "effectiveFrom" | "effectiveTo" | "createdAt" | "updatedAt"> = {
+  referrerDiscountPercent: 20,
+  referrerDiscountCapAmount: 100,
+  refereeDiscountPercent: 10,
+  refereeDiscountCapAmount: 50,
+  currency: "INR",
+  attributionWindowDays: 30,
+  rewardValidityDays: 90,
+  redemptionGraceHours: 168,
+  codeLength: 6,
+  active: true,
+};
+
 /** Mirrors payouts.ts's commissionFor() effective-date lookup. Read fresh on every call (not
- *  cached) so flipping every config's `active` to false is a real, immediate kill switch. */
+ *  cached) so flipping every config's `active` to false is a real, immediate kill switch. Never
+ *  throws — falls back to [DEFAULT_REFERRAL_CONFIG] rather than blocking the whole referral
+ *  feature behind a document an admin may never have created (see this constant's doc comment). */
 async function getActiveReferralConfig(): Promise<ReferralConfig> {
   const now = Timestamp.now();
   const snap = await db.collection("referral_configs").where("active", "==", true).get();
@@ -62,8 +92,8 @@ async function getActiveReferralConfig(): Promise<ReferralConfig> {
         c.effectiveFrom.toMillis() <= now.toMillis() &&
         (c.effectiveTo === null || c.effectiveTo.toMillis() >= now.toMillis())
     );
-  if (!applicable) throw new HttpsError("failed-precondition", "Referral program is not currently active.");
-  return applicable;
+  if (applicable) return applicable;
+  return { id: "default", effectiveFrom: now, effectiveTo: null, createdAt: now, updatedAt: now, ...DEFAULT_REFERRAL_CONFIG };
 }
 
 export function writeReferralEvent(
@@ -423,8 +453,20 @@ export const generateMyReferralCode = onCall(async (request) => {
     };
   }
 
-  for (let attempt = 0; attempt < MAX_CODE_GENERATION_ATTEMPTS; attempt++) {
-    const candidate = randomCode(config.codeLength);
+  // Deterministic, not random — see deriveReferralCodeBase's doc comment. users/{uid} is a
+  // client-writable profile doc (see UserProfileRepository.kt), so `name` may still be blank this
+  // early (e.g. called before onboarding's profile-save step) — deriveReferralCodeBase already
+  // pads a short/empty name with NAME_PART_PADDING rather than failing, so this never blocks code
+  // generation. Phone number comes from Firebase Auth directly (always set — it's how every user
+  // signed in), not the profile doc, so it's never missing regardless of onboarding progress.
+  const [profileSnap, authUser] = await Promise.all([db.collection("users").doc(uid).get(), auth.getUser(uid)]);
+  const name = (profileSnap.data()?.name as string | undefined) ?? "";
+  const phoneNumber = authUser.phoneNumber ?? (profileSnap.data()?.phoneNumber as string | undefined) ?? "";
+  const base = deriveReferralCodeBase(name, phoneNumber);
+
+  const MAX_SUFFIX_ATTEMPTS = 50;
+  for (let suffix = 0; suffix <= MAX_SUFFIX_ATTEMPTS; suffix++) {
+    const candidate = suffix === 0 ? base : `${base}${suffix}`;
     const created = await db.runTransaction(async (tx) => {
       const ref = db.collection("referral_codes").doc(candidate);
       const snap = await tx.get(ref);

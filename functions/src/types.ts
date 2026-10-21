@@ -401,9 +401,15 @@ export interface AuditLog {
 
 export type ReferralCodeStatus = "ACTIVE" | "DISABLED";
 
-/** Doc ID in Firestore IS the code itself (uppercase, fixed length from ReferralConfig.codeLength,
- *  alphabet excludes visually-ambiguous characters) — gets uniqueness for free via a transaction
- *  collision check, the same trick idempotency_keys already uses for its own doc IDs. */
+/** Doc ID in Firestore IS the code itself — deterministic (first 3 letters of the owner's first
+ *  name, uppercase, + last 2 digits of their phone number), not randomly generated, so it's
+ *  personal/memorable rather than an opaque string. Collisions get a numeric suffix appended
+ *  (see referral.ts's deriveReferralCodeBase/generateMyReferralCode) rather than retried with a
+ *  different value, since the base is derived from identity, not chosen freely. Uniqueness itself
+ *  still comes for free via a transaction collision check, the same trick idempotency_keys uses
+ *  for its own doc IDs. `ReferralConfig.codeLength` is unused now (kept on the type only for
+ *  backward compatibility with already-seeded config documents) — code length varies by name/
+ *  suffix rather than being fixed. */
 export interface ReferralCode {
   id: string;
   ownerUserId: string;

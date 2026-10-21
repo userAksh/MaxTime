@@ -1,0 +1,35 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.maxtime.android",
+      "sha256_cert_fingerprints": [
+        "07:4C:36:DE:49:3C:E1:26:8E:85:BE:E9:5D:0A:70:5E:0D:56:AB:84:08:75:2A:C7:19:5C:7E:AE:6D:80:88:D0",
+        "F9:44:4C:D0:79:6D:56:69:0D:D8:3A:3D:4A:DD:79:B9:CE:DF:A2:C6:66:B6:22:C3:4E:BA:13:FD:5C:4E:DE:3C"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.maxtime.android.staging",
+      "sha256_cert_fingerprints": [
+        "07:4C:36:DE:49:3C:E1:26:8E:85:BE:E9:5D:0A:70:5E:0D:56:AB:84:08:75:2A:C7:19:5C:7E:AE:6D:80:88:D0",
+        "F9:44:4C:D0:79:6D:56:69:0D:D8:3A:3D:4A:DD:79:B9:CE:DF:A2:C6:66:B6:22:C3:4E:BA:13:FD:5C:4E:DE:3C"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.maxtime.android.beta",
+      "sha256_cert_fingerprints": [
+        "07:4C:36:DE:49:3C:E1:26:8E:85:BE:E9:5D:0A:70:5E:0D:56:AB:84:08:75:2A:C7:19:5C:7E:AE:6D:80:88:D0",
+        "F9:44:4C:D0:79:6D:56:69:0D:D8:3A:3D:4A:DD:79:B9:CE:DF:A2:C6:66:B6:22:C3:4E:BA:13:FD:5C:4E:DE:3C"
+      ]
+    }
+  }
+]

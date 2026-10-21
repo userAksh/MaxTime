@@ -52,4 +52,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
         completionHandler(.newData)
     }
+
+    // Points the default SwiftUI-managed window scene at SceneDelegate instead of iOS's own
+    // implicit one — the one piece of setup a SwiftUI App needs to receive Universal Links via
+    // UIWindowSceneDelegate, no Info.plist UIApplicationSceneManifest entry required.
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = SceneDelegate.self
+        return config
+    }
 }

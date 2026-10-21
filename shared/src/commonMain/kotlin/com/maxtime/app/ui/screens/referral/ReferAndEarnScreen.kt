@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,6 +63,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import org.jetbrains.compose.resources.imageResource
+import com.maxtime.app.analytics.AnalyticsEvent
+import com.maxtime.app.analytics.AnalyticsTracker
 import com.maxtime.app.data.firebase.ReferralCodeInfo
 import com.maxtime.app.data.firebase.ReferralFunctions
 import com.maxtime.app.data.share.encodeToPngBytes
@@ -88,15 +91,15 @@ import org.jetbrains.compose.resources.painterResource
  * THEIR OWN code with others. Visuals match the approved reference (2026-09-19 handoff,
  * "Screenshot 2026-09-19 at 1.31.19 AM") as closely as reasonable within V1's constraints:
  *
- * - Every quick-share icon (WhatsApp / Instagram / Messages / Copy Code / More) — including the
- *   big "Share Referral Code" button — opens the SAME cross-platform native share sheet
- *   ([rememberShareLauncher]), not a real per-app integration. A genuine one-tap-into-WhatsApp
- *   deep link needs an `LSApplicationQueriesSchemes` entry in iosApp's Info.plist (a native
- *   project file, untested here), and Instagram's share URL scheme doesn't support prefilled
- *   text at all (only images/Stories via its own pasteboard API) — so a real Instagram button
- *   would silently do nothing useful. Routing everything through the one already-proven share
- *   sheet is also the more literal reading of "Do not build deep links" from the product brief:
- *   app URL schemes are themselves a form of deep link.
+ * - Copy Code / More / the big "Share Referral Code" button all open the same cross-platform
+ *   native share sheet ([rememberShareLauncher.shareImage]). WhatsApp gets its own link-only path
+ *   (see shareToWhatsApp below — WhatsApp's share extension never renders a link preview when an
+ *   image is attached to the same share). Instagram is the
+ *   one dedicated deep-link integration, going straight to Story on both platforms — see
+ *   [ShareLauncher.shareToInstagram]/[ShareLauncher.shareToInstagramStory]. Direct-message sharing
+ *   was investigated and ruled out: on-device diagnostics confirmed Instagram's `direct-inbox`
+ *   scheme opens a blank inbox with no image/contact attached, since Meta never published a
+ *   Direct equivalent of the Stories sticker API.
  * - No tracking/history/rewards-ledger view here — out of scope for this pass. The footer promo
  *   card's chevron is decorative only, it doesn't navigate anywhere.
  * - All reward numbers come from generateMyReferralCode() (functions/src/referral.ts), which
@@ -136,14 +139,14 @@ private sealed interface ReferAndEarnUiState {
 // have no sticker concept and always flatten any transparency to a solid color, so matching the
 // destination's own canvas ratio is the only way to avoid a letterboxed look there).
 // STICKER = a real transparent PNG with genuine rounded corners (alpha=0 outside the rounded
-// rect), meant only for Instagram's sticker-sharing channel (see shareCardToInstagramStories)
-// which is specifically designed to composite a transparent sticker over a generated background
-// color/gradient — confirmed via Instagram's own "com.instagram.sharedSticker.stickerImage"
-// pasteboard key and Meta's official Android "interactive_asset_uri" docs.
-// INSTAGRAM_SHEET = opaque, same STICKER-style card content but centered with a baked-in dark
-// margin on its own canvas, used ONLY when Instagram is the destination the person picks from the
-// plain native/generic share sheet (not the dedicated sticker button above) — see
-// drawShareCardForInstagramSheet's doc comment for why this needs its own render at all.
+// rect) — used only by iOS's pasteboard-based Instagram Story deep link (see
+// ShareLauncher.ios.kt's shareToInstagramStory), which composites it over a
+// background Instagram generates itself via the "stickerImage" pasteboard key.
+// INSTAGRAM_SHEET = opaque card with a baked-in dark margin, corner radius painted directly into
+// the pixels (no real alpha transparency) — used when Instagram is picked from the plain
+// native/generic share sheet, and by Android's dedicated Instagram button (its share-receiver
+// activity has no sticker/pasteboard concept and flattens everything it receives regardless) —
+// see drawShareCardForInstagramSheet's doc comment for why this needs its own render at all.
 private enum class ShareCardVariant { FULL_BLEED, STICKER, INSTAGRAM_SHEET }
 
 private fun Modifier.recordShareCard(
@@ -320,14 +323,13 @@ private fun DrawScope.drawShareCard(
 }
 
 /** A real transparent PNG with genuine rounded corners — everything outside the rounded rect is
- *  left at the canvas's native alpha=0 (confirmed correct via on-device pixel diagnostics earlier
- *  in this feature's development; the actual bug was never our transparency, it was
- *  [ShareLauncher.shareToInstagramStories] using Instagram's "backgroundImage" pasteboard/intent
- *  key, which Instagram itself always flattens to opaque, instead of the "stickerImage" key,
- *  which is specifically designed to composite a transparent sticker over a generated background
- *  color — see that function's doc comment). Meant only for the Instagram-Stories sticker share
- *  path; [drawShareCard] (opaque, full-bleed) still covers generic "Share via"/WhatsApp, since
- *  those have no sticker concept and always flatten transparency regardless of the key used. */
+ *  left at the canvas's native alpha=0. Used two ways: standalone (ShareCardVariant.STICKER), for
+ *  iOS's pasteboard-based Instagram Story deep link (see ShareLauncher.ios.kt's
+ *  shareToInstagramStory), which needs the real transparency for Instagram
+ *  to composite it over its own generated background; and as the content painted inside
+ *  [drawShareCardForInstagramSheet]'s larger opaque canvas, for destinations that flatten
+ *  transparency regardless. [drawShareCard] (opaque, full-bleed) separately covers generic
+ *  "Share via"/WhatsApp. */
 private fun DrawScope.drawShareSticker(
     highfiveImage: ImageBitmap,
     textMeasurer: TextMeasurer,
@@ -484,40 +486,90 @@ fun ReferAndEarnScreen(router: Router) {
         }
     }
     LaunchedEffect(Unit) { load() }
-
-    fun referralText(code: String, refereePercent: Int, refereeCap: Int): String =
-        "Join me on MaxTime! Use my code $code to get $refereePercent% off your first booking " +
-            "(up to ₹$refereeCap) — once you complete it, I get a reward too 🎉"
+    LaunchedEffect(Unit) { AnalyticsTracker.track(AnalyticsEvent.ReferAndEarnViewed) }
 
     // The actual share-card pixels, drawn procedurally (see drawShareCard's doc comment for why)
     // into this graphicsLayer every frame — real per-user code/percentages, not a bundled
     // flattened image. Only converted to real bytes — via toImageBitmap() + encodeToPngBytes() —
     // the moment someone taps a share action, not continuously.
     val graphicsLayer = rememberGraphicsLayer()
-    // Separate layer/canvas for the Instagram-Stories sticker render (drawShareSticker) — it's a
-    // different size and a different, genuinely transparent image, not just a different fill
-    // color on the same canvas, so it needs its own GraphicsLayer to record into.
-    val stickerGraphicsLayer = rememberGraphicsLayer()
-    // Separate again from both layers above — see drawShareCardForInstagramSheet's doc comment;
-    // this is the opaque "card with baked-in margin" render, used only when Instagram ends up
-    // being the destination someone picks from the plain native share sheet.
+    // Separate layer/canvas for the "opaque card with baked-in margin" render — see
+    // drawShareCardForInstagramSheet's doc comment. Used both when Instagram ends up being the
+    // destination someone picks from the plain native share sheet, and by Android's dedicated
+    // Instagram button (shareToInstagram).
     val instagramSheetGraphicsLayer = rememberGraphicsLayer()
+    // Separate again — the real transparent sticker render, used only by iOS's pasteboard-based
+    // Instagram Story deep link (shareToInstagramStory).
+    val stickerGraphicsLayer = rememberGraphicsLayer()
     val textMeasurer = rememberTextMeasurer()
     val highfiveImage = imageResource(Res.drawable.refer_earn_highfive)
 
     suspend fun renderShareCardPng(): ByteArray = graphicsLayer.toImageBitmap().encodeToPngBytes()
-    suspend fun renderShareStickerPng(): ByteArray = stickerGraphicsLayer.toImageBitmap().encodeToPngBytes()
     suspend fun renderInstagramSheetCardPng(): ByteArray = instagramSheetGraphicsLayer.toImageBitmap().encodeToPngBytes()
+    suspend fun renderShareStickerPng(): ByteArray = stickerGraphicsLayer.toImageBitmap().encodeToPngBytes()
+
+    val state = uiState
+    val refereePercent = (state as? ReferAndEarnUiState.Loaded)?.info?.refereeDiscountPercent ?: FALLBACK_REFEREE_PERCENT
+    val refereeCap = (state as? ReferAndEarnUiState.Loaded)?.info?.refereeDiscountCapAmount ?: FALLBACK_REFEREE_CAP
+    val referrerPercent = (state as? ReferAndEarnUiState.Loaded)?.info?.referrerDiscountPercent ?: FALLBACK_REFERRER_PERCENT
+    val referrerCap = (state as? ReferAndEarnUiState.Loaded)?.info?.referrerDiscountCapAmount ?: FALLBACK_REFERRER_CAP
+    val code = (state as? ReferAndEarnUiState.Loaded)?.info?.code
+
+    fun referralText(code: String, refereePercent: Int, refereeCap: Int): String =
+        "Join me on MaxTime! Use my code $code to get $refereePercent% off your first booking " +
+            "(up to ₹$refereeCap) — once you complete it, I get a reward too 🎉"
+
+    // The real, deployed landing page behind every referral share link — see
+    // functions/src/referralLandingPage.ts (same "https://maxtime.in" domain, duplicated here
+    // since this is a genuinely separate codebase/runtime, same as other cross-repo constants in
+    // this app). Only consumed by shareToWhatsApp below now — see its doc comment for why WhatsApp
+    // needs the raw link and nothing else.
+    fun referralLink(code: String): String = "https://maxtime.in/r/$code"
+
+    fun shareCard(caption: String? = null) {
+        if (code == null) return
+        AnalyticsTracker.track(AnalyticsEvent.ReferralCodeShared(channel = "share_sheet"))
+        scope.launch {
+            val bytes = renderShareCardPng()
+            // Always rendered alongside the normal card, not just for the "More"/big
+            // button path — Instagram can be picked from either call site's share sheet.
+            val instagramBytes = renderInstagramSheetCardPng()
+            shareLauncher.shareImage(bytes, caption = caption, instagramBytes = instagramBytes)
+        }
+    }
+
+    // WhatsApp gets the link alone, with no image attached — on-device testing showed WhatsApp's
+    // share extension never renders its own Open-Graph preview card for the link when an image is
+    // also part of the same share (even though the landing page's OG tags are confirmed correct),
+    // apparently treating the attached image as "the" visual and skipping the link unfurl
+    // entirely. Dropping the image is what lets WhatsApp recognize the URL as the sole content and
+    // fetch/render its own brand-mark + title + description card for it.
+    fun shareToWhatsApp() {
+        val c = code ?: return
+        AnalyticsTracker.track(AnalyticsEvent.ReferralCodeShared(channel = "whatsapp"))
+        shareLauncher.shareLink(referralLink(c), targetPackage = "com.whatsapp")
+    }
+
+    // Instagram's custom button goes straight to Story on both platforms — Direct/Message was
+    // removed after on-device diagnostics confirmed `instagram://direct-inbox` only opens a blank
+    // inbox with no image/contact attached (Meta never exposed a Direct equivalent of the Stories
+    // sticker API); see git history for the ruled-out destination-picker UI this replaced.
+    fun onInstagramIconClick() {
+        if (code == null) return
+        AnalyticsTracker.track(AnalyticsEvent.ReferralCodeShared(channel = "instagram_story"))
+        scope.launch {
+            if (shareLauncher.instagramSharePickerIsNative) {
+                // Android: no sticker-only API — the shared Instagram destination picker
+                // (Story/Post/Reel/Message) is Instagram's own, reached via one Intent.
+                shareLauncher.shareToInstagram(renderInstagramSheetCardPng())
+            } else {
+                shareLauncher.shareToInstagramStory(renderShareStickerPng())
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         ScreenScaffold {
-            val state = uiState
-            val refereePercent = (state as? ReferAndEarnUiState.Loaded)?.info?.refereeDiscountPercent ?: FALLBACK_REFEREE_PERCENT
-            val refereeCap = (state as? ReferAndEarnUiState.Loaded)?.info?.refereeDiscountCapAmount ?: FALLBACK_REFEREE_CAP
-            val referrerPercent = (state as? ReferAndEarnUiState.Loaded)?.info?.referrerDiscountPercent ?: FALLBACK_REFERRER_PERCENT
-            val referrerCap = (state as? ReferAndEarnUiState.Loaded)?.info?.referrerDiscountCapAmount ?: FALLBACK_REFERRER_CAP
-            val code = (state as? ReferAndEarnUiState.Loaded)?.info?.code
-
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = MaxTimeSpacing.screenPadding).padding(top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -613,28 +665,11 @@ fun ReferAndEarnScreen(router: Router) {
                         onCopy = {
                             clipboard.setText(AnnotatedString(state.info.code))
                             toastMessage = "Code copied"
+                            AnalyticsTracker.track(AnalyticsEvent.ReferralCodeCopied)
                         }
                     )
                     is ReferAndEarnUiState.Failed -> CodeCardFailed(onRetry = ::load)
                 }
-            }
-
-            fun shareCard(caption: String? = null, targetPackage: String? = null) {
-                if (code == null) return
-                scope.launch {
-                    val bytes = renderShareCardPng()
-                    // Always rendered alongside the normal card, not just for the "More"/big
-                    // button path — on iOS targetPackage is ignored and every one of these calls
-                    // opens the same plain UIActivityViewController sheet, so Instagram can be
-                    // picked from ANY of them, not only the ones with targetPackage == null.
-                    val instagramBytes = renderInstagramSheetCardPng()
-                    shareLauncher.shareImage(bytes, caption = caption, targetPackage = targetPackage, instagramBytes = instagramBytes)
-                }
-            }
-
-            fun shareCardToInstagramStories() {
-                if (code == null) return
-                scope.launch { shareLauncher.shareToInstagramStories(renderShareStickerPng()) }
             }
 
             Column(Modifier.padding(horizontal = MaxTimeSpacing.screenPadding)) {
@@ -647,26 +682,18 @@ fun ReferAndEarnScreen(router: Router) {
                     QuickShareIcon(
                         label = "WhatsApp",
                         background = Color(0xFF2FCE5B),
-                        onClick = {
-                            code?.let {
-                                shareCard(caption = referralText(it, refereePercent, refereeCap), targetPackage = "com.whatsapp")
-                            }
-                        }
+                        onClick = { shareToWhatsApp() }
                     ) { WhatsAppGlyph(tint = Color.White) }
                     QuickShareIcon(
                         label = "Instagram",
                         background = Brush.linearGradient(
                             listOf(Color(0xFFFEDA75), Color(0xFFD62976), Color(0xFF4F5BD5))
                         ),
-                        // Instagram Stories has no caption/text field in this API — only the
-                        // image itself goes across, see ShareLauncher.shareToInstagramStories.
-                        onClick = { shareCardToInstagramStories() }
+                        // Android: jumps straight into Instagram's own Story/Post/Reel/Message
+                        // picker. iOS: opens our own destination picker first, since no
+                        // equivalent single-call mechanism exists there — see onInstagramIconClick.
+                        onClick = { onInstagramIconClick() }
                     ) { InstagramGlyph() }
-                    QuickShareIcon(
-                        label = "Snapchat",
-                        background = Color.Transparent,
-                        onClick = { shareCard(targetPackage = "com.snapchat.android") }
-                    ) { SnapchatGlyph() }
                     QuickShareIcon(
                         label = "Copy Code",
                         background = MaxTimeColors.cardBg,
@@ -674,6 +701,7 @@ fun ReferAndEarnScreen(router: Router) {
                             code?.let {
                                 clipboard.setText(AnnotatedString(it))
                                 toastMessage = "Code copied"
+                                AnalyticsTracker.track(AnalyticsEvent.ReferralCodeCopied)
                             }
                         }
                     ) { CopyGlyph(tint = MaxTimeColors.textStrong) }
@@ -738,18 +766,10 @@ fun ReferAndEarnScreen(router: Router) {
                     .offset(x = 20000.dp)
                     .recordShareCard(graphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, ShareCardVariant.FULL_BLEED)
             )
-            // The Instagram-Stories sticker render — a real card shape (not 9:16), since
-            // Instagram positions/scales a sticker itself; matches the size hypd's own working
-            // Instagram-Stories sticker card uses.
-            Box(
-                Modifier
-                    .width(340.dp)
-                    .height(420.dp)
-                    .offset(x = 20000.dp, y = 700.dp)
-                    .recordShareCard(stickerGraphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, ShareCardVariant.STICKER)
-            )
-            // The Instagram-from-native-sheet render — see drawShareCardForInstagramSheet's doc
-            // comment. 420x580dp gives the same 340x420dp card a ~40dp horizontal / ~80dp
+            // The opaque, corner-radius-baked-in Instagram render — see
+            // drawShareCardForInstagramSheet's doc comment. Used for whenever Instagram is picked
+            // from the plain native share sheet, and by Android's dedicated Instagram button
+            // (shareToInstagram). 420x580dp gives the 340x420dp card a ~40dp horizontal / ~80dp
             // vertical margin, baked into the exported pixels themselves.
             Box(
                 Modifier
@@ -757,6 +777,16 @@ fun ReferAndEarnScreen(router: Router) {
                     .height(580.dp)
                     .offset(x = 20000.dp, y = 1200.dp)
                     .recordShareCard(instagramSheetGraphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, ShareCardVariant.INSTAGRAM_SHEET)
+            )
+            // The real transparent sticker render — used only by iOS's pasteboard-based Instagram
+            // Story deep link (shareToInstagramStory). A real card
+            // shape (not 9:16), since Instagram positions/scales a sticker itself.
+            Box(
+                Modifier
+                    .width(340.dp)
+                    .height(420.dp)
+                    .offset(x = 20000.dp, y = 2000.dp)
+                    .recordShareCard(stickerGraphicsLayer, textMeasurer, highfiveImage, code ?: "", refereePercent, referrerPercent, ShareCardVariant.STICKER)
             )
         }
         SuccessToast(
@@ -766,6 +796,7 @@ fun ReferAndEarnScreen(router: Router) {
         )
     }
 }
+
 
 @Composable
 private fun RewardCard(
@@ -958,30 +989,6 @@ private fun WhatsAppGlyph(tint: Color) {
             .build()
     }
     Image(imageVector = vector, contentDescription = null, modifier = Modifier.size(18.dp))
-}
-
-// Real Snapchat badge — full 3-layer icon (yellow rounded-square background, white ghost
-// silhouette, black outline/detail), taken from hypd-creator-android's snapchat_ic.xml. Unlike
-// WhatsApp/Instagram above, this renders as its own complete badge rather than a white glyph on
-// this app's own colored circle — Snapchat's brand identity IS the yellow badge, so QuickShareIcon
-// is given a transparent background for this one and the badge supplies its own fill.
-private const val SNAPCHAT_BG_PATH =
-    "M12.5,0L34.5,0A12,12 0,0 1,46.5 12L46.5,34A12,12 0,0 1,34.5 46L12.5,46A12,12 0,0 1,0.5 34L0.5,12A12,12 0,0 1,12.5 0z"
-private const val SNAPCHAT_GHOST_PATH =
-    "M20.886,13.5L24.284,12.75H25.591L29.25,14.5L31.08,18.25V21L33.432,20.75V21.5V22.75L31.864,23.25L31.341,24L32.648,26.5L36.046,28.25L35.261,29.25L32.909,30L32.386,31L31.864,31.75H28.989L27.682,32.25L24.807,33.75L22.977,33.25L20.886,32.25L19.318,31.75H17.227L16.443,31.25L15.659,30L14.352,29.75L13.307,29V28.25L14.614,27.5L16.966,25.75L17.489,24L15.398,22.75L15.659,21.5L16.443,20.75L18.011,21L18.795,16.5L20.886,13.5Z"
-private const val SNAPCHAT_DETAIL_PATH =
-    "M24.485,13.435C27.698,13.436 30.375,15.998 30.379,19.082C30.38,19.804 30.404,20.47 30.446,21.082C30.472,21.46 30.801,21.741 31.178,21.741C31.233,21.741 31.29,21.735 31.346,21.722L32.353,21.496C32.396,21.486 32.439,21.482 32.481,21.482C32.737,21.482 32.972,21.649 33.03,21.897C33.111,22.247 32.906,22.6 32.552,22.719L31.024,23.31C30.638,23.459 30.431,23.861 30.539,24.246C31.765,28.585 35.19,28.134 35.19,28.699C35.19,29.409 32.609,29.509 32.375,29.733C32.142,29.956 32.365,31.04 31.844,31.249C31.746,31.289 31.607,31.303 31.436,31.303C31.044,31.303 30.489,31.229 29.904,31.229C29.396,31.229 28.866,31.285 28.4,31.491C27.164,32.037 25.973,33.058 24.495,33.058C23.018,33.058 21.826,32.037 20.59,31.491C20.124,31.285 19.594,31.229 19.087,31.229C18.502,31.229 17.947,31.303 17.555,31.303C17.384,31.303 17.245,31.289 17.146,31.249C16.625,31.04 16.848,29.956 16.615,29.733C16.382,29.509 13.801,29.409 13.801,28.699C13.801,28.134 17.225,28.585 18.451,24.246C18.56,23.861 18.353,23.459 17.967,23.31L16.439,22.719C16.084,22.6 15.88,22.247 15.961,21.897C16.018,21.649 16.254,21.482 16.509,21.482C16.552,21.482 16.595,21.486 16.638,21.496L17.644,21.722C17.701,21.735 17.758,21.741 17.813,21.741C18.19,21.741 18.518,21.46 18.545,21.082C18.587,20.469 18.611,19.804 18.611,19.082C18.615,15.998 21.271,13.436 24.485,13.435ZM24.485,12.212H24.484C23.525,12.212 22.59,12.396 21.707,12.76C20.859,13.109 20.095,13.607 19.438,14.239C18.782,14.871 18.265,15.604 17.903,16.419C17.526,17.266 17.334,18.162 17.333,19.08C17.333,19.531 17.323,19.969 17.304,20.389L16.929,20.304C16.792,20.274 16.651,20.258 16.509,20.258C16.102,20.258 15.7,20.39 15.377,20.629C15.041,20.879 14.805,21.235 14.713,21.631C14.494,22.575 15.038,23.527 15.981,23.862L17.103,24.295C16.36,26.478 14.991,26.896 14.068,27.178C13.824,27.253 13.612,27.317 13.411,27.413C12.609,27.794 12.523,28.439 12.523,28.699C12.523,29.197 12.769,29.651 13.216,29.978C13.438,30.141 13.714,30.275 14.058,30.389C14.527,30.543 15.072,30.641 15.514,30.72C15.535,30.877 15.566,31.045 15.619,31.215C15.839,31.921 16.301,32.237 16.651,32.377C16.983,32.511 17.326,32.526 17.555,32.526C17.778,32.526 18.015,32.51 18.266,32.492C18.535,32.473 18.813,32.453 19.087,32.453C19.512,32.453 19.829,32.502 20.054,32.601C20.364,32.739 20.693,32.924 21.041,33.119C22.011,33.664 23.109,34.282 24.495,34.282C25.882,34.282 26.98,33.664 27.949,33.119C28.298,32.924 28.626,32.739 28.937,32.601C29.162,32.501 29.479,32.453 29.904,32.453C30.178,32.453 30.456,32.473 30.725,32.492C30.976,32.51 31.212,32.526 31.436,32.526C31.665,32.526 32.008,32.511 32.34,32.377C32.689,32.237 33.152,31.921 33.371,31.215C33.424,31.045 33.456,30.877 33.477,30.72C33.919,30.641 34.463,30.543 34.933,30.389C35.277,30.275 35.553,30.141 35.775,29.978C36.222,29.651 36.468,29.197 36.468,28.699C36.468,28.439 36.382,27.794 35.579,27.413C35.378,27.317 35.167,27.253 34.922,27.178C34,26.896 32.631,26.478 31.888,24.296L33.009,23.862C33.952,23.527 34.496,22.575 34.278,21.631C34.186,21.235 33.95,20.879 33.613,20.629C33.291,20.39 32.889,20.258 32.481,20.258C32.34,20.258 32.199,20.274 32.061,20.304L31.687,20.388C31.668,19.969 31.658,19.531 31.658,19.08C31.656,18.161 31.463,17.265 31.083,16.416C30.719,15.602 30.199,14.869 29.54,14.237C28.88,13.605 28.115,13.108 27.265,12.759C26.379,12.396 25.444,12.212 24.485,12.212Z"
-
-@Composable
-private fun SnapchatGlyph() {
-    val vector = remember {
-        ImageVector.Builder(name = "Snapchat", defaultWidth = 48.dp, defaultHeight = 48.dp, viewportWidth = 47f, viewportHeight = 46f)
-            .addPath(pathData = PathParser().parsePathString(SNAPCHAT_BG_PATH).toNodes(), fill = SolidColor(Color(0xFFFFF853)))
-            .addPath(pathData = PathParser().parsePathString(SNAPCHAT_GHOST_PATH).toNodes(), fill = SolidColor(Color.White))
-            .addPath(pathData = PathParser().parsePathString(SNAPCHAT_DETAIL_PATH).toNodes(), fill = SolidColor(Color(0xFF050505)))
-            .build()
-    }
-    Image(imageVector = vector, contentDescription = null, modifier = Modifier.size(48.dp))
 }
 
 // Real Instagram glyph paths (rounded-square outline, camera-lens ring, flash dot), taken from

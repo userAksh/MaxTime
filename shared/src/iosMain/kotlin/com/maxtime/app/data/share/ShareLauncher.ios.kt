@@ -74,37 +74,49 @@ actual class ShareLauncher {
         } else {
             image
         }
-        val items = if (caption != null) listOf(imageItem, caption) else listOf(imageItem)
+        val items = listOfNotNull(imageItem, caption)
         val activityController = UIActivityViewController(activityItems = items, applicationActivities = null)
         root.presentViewController(activityController, animated = true, completion = null)
     }
 
+    // targetPackage is unused here for the same reason as in shareImage — no iOS equivalent of
+    // "jump straight into this one app" exists for UIActivityViewController.
     @OptIn(ExperimentalForeignApi::class)
-    actual fun shareToInstagramStories(pngBytes: ByteArray) {
-        // The bare "instagram-stories://share" URL (no query) is what we had before, and every
-        // real working reference implementation found in research includes a required
-        // ?source_application=<bundle id> param — without it, Instagram just opens normally
-        // (home feed) instead of recognizing this as a sticker-share request, which matches
-        // exactly what was observed on-device (app switched, landed on home feed, pasteboard
-        // payload ignored).
+    actual fun shareLink(url: String, targetPackage: String?) {
+        val root = topMostViewController() ?: return
+        val activityController = UIActivityViewController(activityItems = listOf(NSURL(string = url)), applicationActivities = null)
+        root.presentViewController(activityController, animated = true, completion = null)
+    }
+
+    // Android-only capability — no iOS mechanism reaches Instagram's own multi-destination
+    // picker with a single call, see this property's doc comment on the expect declaration.
+    actual val instagramSharePickerIsNative: Boolean = false
+
+    // Never actually called on iOS since instagramSharePickerIsNative is false — the screen only
+    // calls shareToInstagramStory here. Falls back to the generic sheet for safety if it's ever
+    // reached anyway.
+    @OptIn(ExperimentalForeignApi::class)
+    actual fun shareToInstagram(opaqueBytes: ByteArray) {
+        shareImage(opaqueBytes, caption = null, targetPackage = null)
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    actual fun shareToInstagramStory(pngBytes: ByteArray) {
         val bundleId = NSBundle.mainBundle.bundleIdentifier ?: ""
-        val storiesUrl = NSURL(string = "instagram-stories://share?source_application=$bundleId")
+        val url = NSURL(string = "instagram-stories://share?source_application=$bundleId")
         // canOpenURL only returns true for schemes this app declared in Info.plist's
         // LSApplicationQueriesSchemes AND that are actually installed — covers both "Instagram
         // isn't installed" and "we forgot to whitelist the scheme" with the same fallback.
-        if (!UIApplication.sharedApplication.canOpenURL(storiesUrl)) {
+        if (url == null || !UIApplication.sharedApplication.canOpenURL(url)) {
             shareImage(pngBytes, caption = null, targetPackage = null)
             return
         }
         // "stickerImage" (not "backgroundImage") is the key that actually preserves this PNG's
         // alpha channel — Instagram composites it as a floating, transparent sticker on top of a
-        // generated background, rather than flattening it into an opaque full-bleed background
-        // (which "backgroundImage" always does, regardless of the PNG's own encoding — confirmed
-        // via Instagram's own documented pasteboard keys). backgroundTopColor/backgroundBottomColor
-        // fill the canvas around the sticker with this card's own gradient instead of Instagram's
-        // default, so pngBytes here must come from drawShareSticker (real rounded corners, real
-        // transparent corners), not drawShareCard (opaque, full-bleed — that one's for generic
-        // "Share via"/WhatsApp, which has no sticker concept at all).
+        // generated background, rather than flattening it into an opaque full-bleed background.
+        // backgroundTopColor/backgroundBottomColor fill the canvas around the sticker with this
+        // card's own gradient instead of Instagram's default. pngBytes here must come from
+        // drawShareSticker (real rounded corners, real transparent corners).
         val pasteboardItem = mapOf<Any?, Any?>(
             "com.instagram.sharedSticker.stickerImage" to pngBytes.toNSData(),
             "com.instagram.sharedSticker.backgroundTopColor" to "#0E2413",
@@ -118,11 +130,7 @@ actual class ShareLauncher {
         // (confirmed via on-device diagnostic: canOpenURL=true, openURL(_:) returned false) —
         // it never actually launched Instagram despite reporting success. The 3-argument overload
         // below is still functional and is what's now required to actually switch apps.
-        UIApplication.sharedApplication.openURL(
-            storiesUrl,
-            options = emptyMap<Any?, Any?>(),
-            completionHandler = null
-        )
+        UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any?>(), completionHandler = null)
     }
 }
 
